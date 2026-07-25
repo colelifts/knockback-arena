@@ -1,4 +1,4 @@
-export const GAME_VERSION = '1.0.0';
+export const GAME_VERSION = '1.2.0';
 export const TILE_SIZE = 4;
 export const ARENA_COLUMNS = 19;
 export const ARENA_ROWS = 15;
