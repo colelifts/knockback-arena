@@ -123,9 +123,10 @@ The Vite client is configured for Vercel and the persistent Socket.IO server is 
 ## Current limitations
 
 - Desktop keyboard/mouse is the gameplay target; mobile menus work but touch combat is not claimed.
-- Online rendering interpolates authoritative snapshots; the local prediction/reconciliation seam is present but prediction is deliberately conservative in this first release.
+- Online movement is predicted immediately, replays unacknowledged inputs during thresholded reconciliation, and renders remote players from a 100 ms interpolation buffer.
 - Spectator-compatible snapshots exist, but there is no public spectator UI.
-- Audio is code-generated rather than a full authored soundtrack.
+- Music and effects are repo-local CC0 assets with OGG/MP3 fallback, separate mixer buses, and positional gameplay attenuation. See `docs/audio-selection.md`.
+- Append `?debug=1` for live frame, physics, network, prediction, body, draw, triangle, movement, grounded, and action diagnostics.
 - Free hosting can sleep and does not guarantee uptime.
 
 ## License and assets

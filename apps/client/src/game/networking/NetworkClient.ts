@@ -21,6 +21,11 @@ export class NetworkClient extends EventTarget {
   playerId = '';
   room: RoomView | null = null;
   snapshot: MatchSnapshot | null = null;
+  private pingMs = 0;
+  private missingSnapshots = 0;
+  private lastSnapshotTick = 0;
+  private snapshotBytes = 0;
+  private pingTimer = 0;
   connect(url: string): Promise<void> {
     this.disconnect();
     this.socket = io(url, {
@@ -34,6 +39,15 @@ export class NetworkClient extends EventTarget {
       this.emit('status', { connected: true });
       const token = sessionStorage.getItem('ka-reconnect-token');
       if (token) this.socket?.emit('session:reconnect', { token });
+      window.clearInterval(this.pingTimer);
+      const samplePing = () => {
+        const started = performance.now();
+        this.socket?.timeout(2500).emit('latency:ping', started, (error: unknown) => {
+          if (!error) this.pingMs = Math.round(performance.now() - started);
+        });
+      };
+      samplePing();
+      this.pingTimer = window.setInterval(samplePing, 2000);
     });
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => reject(new Error('MULTIPLAYER_WAKING')), 9000);
@@ -63,6 +77,10 @@ export class NetworkClient extends EventTarget {
       });
       this.socket!.on('match:started', (data: unknown) => this.emit('match', data));
       this.socket!.on('snapshot', (snapshot: MatchSnapshot) => {
+        if (this.lastSnapshotTick && snapshot.tick - this.lastSnapshotTick > 3)
+          this.missingSnapshots += Math.floor((snapshot.tick - this.lastSnapshotTick) / 1.5) - 1;
+        this.lastSnapshotTick = snapshot.tick;
+        this.snapshotBytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
         this.snapshot = snapshot;
         this.emit('snapshot', snapshot);
       });
@@ -106,11 +124,22 @@ export class NetworkClient extends EventTarget {
   rematch(): void {
     this.socket?.emit('match:rematch');
   }
+  testRingOut(): void {
+    this.socket?.emit('test:ring-out');
+  }
   disconnect(): void {
+    window.clearInterval(this.pingTimer);
     this.socket?.disconnect();
     this.socket = null;
   }
   get ping(): number {
-    return this.socket?.connected ? 1 : 0;
+    return this.socket?.connected ? this.pingMs : 0;
+  }
+  get telemetry(): { ping: number; missingSnapshots: number; snapshotBytes: number } {
+    return {
+      ping: this.ping,
+      missingSnapshots: this.missingSnapshots,
+      snapshotBytes: this.snapshotBytes,
+    };
   }
 }

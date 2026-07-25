@@ -9,10 +9,12 @@ import type { BotDifficulty } from '../game/bot/BotController.js';
 declare global {
   interface Window {
     __KA_TEST__?: {
-      startBot: () => void;
+      startBot: (difficulty?: BotDifficulty) => void;
       state: () => ReturnType<GameEngine['getTestState']>;
       key: (code: string, down: boolean) => void;
       punch: () => void;
+      ringOut: () => void;
+      onlineRingOut: () => void;
     };
   }
 }
@@ -51,13 +53,16 @@ export class GameApp {
           this.mode === 'online' ? this.network.ping : undefined,
         ),
       sendInput: (input: PlayerInput) => this.network.sendInput(input),
+      networkStats: () => this.network.telemetry,
     });
     this.bindNetwork();
     window.__KA_TEST__ = {
-      startBot: () => this.startBot('boy', 'normal'),
+      startBot: (difficulty = 'normal') => this.startBot('boy', difficulty),
       state: () => this.engine.getTestState(),
       key: (code, down) => this.engine.testKey(code, down),
       punch: () => this.engine.testPunch(),
+      ringOut: () => this.engine.testRingOut(),
+      onlineRingOut: () => this.network.testRingOut(),
     };
   }
   private bindNetwork(): void {
@@ -115,9 +120,8 @@ export class GameApp {
       return false;
     }
   }
-  private async openOnline(): Promise<void> {
+  private openOnline(): void {
     this.ui.showCharacterSelect('online');
-    await this.ensureNetwork();
   }
   private async createRoom(name: string, character: CharacterChoice): Promise<void> {
     if (await this.ensureNetwork()) this.network.create(name, character);
