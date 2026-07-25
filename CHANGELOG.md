@@ -8,3 +8,4 @@
 - Added authoritative Socket.IO private rooms, Quick Play, rematches, validation, rate limiting, reconnect windows, and status endpoints.
 - Added deterministic arena/hazard rules, fixed-tick round flow, automated tests, deployment manifests, and documentation.
 - Excluded test-only modules from production TypeScript builds for hosts that omit development dependencies.
+- Kept server compile-time HTTP declarations available during production-only Render installs.
