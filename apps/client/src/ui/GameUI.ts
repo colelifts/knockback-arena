@@ -102,7 +102,7 @@ export class GameUI {
   startHud(): void {
     this.screen.classList.add('hidden');
     this.hud.classList.remove('hidden');
-    this.hud.innerHTML = `<div class="score"><div><span>YOU</span><strong id="scoreA">0</strong></div><b>FIRST TO 3</b><div><strong id="scoreB">0</strong><span>RIVAL</span></div></div><div id="warning" class="warning hidden"></div><div id="countdown" class="countdown"></div><div class="connection"><i></i><span id="ping">BOT MODE</span></div><div class="controls-hint"><kbd>WASD</kbd> MOVE <kbd>SPACE</kbd> JUMP <kbd>SHIFT</kbd> DODGE <kbd>LMB</kbd> PUNCH</div>`;
+    this.hud.innerHTML = `<div class="score"><div><span>YOU</span><strong id="scoreA">0</strong></div><b>FIRST TO 3</b><div><strong id="scoreB">0</strong><span>RIVAL</span></div></div><div id="warning" class="warning hidden"></div><div id="countdown" class="countdown"></div><div class="connection"><i></i><span id="ping">BOT MODE</span></div><div class="controls-hint"><kbd>WASD</kbd> MOVE <kbd>SPACE</kbd> JUMP <kbd>SHIFT</kbd> DODGE <kbd>E</kbd> BRACE <kbd>LMB</kbd> PUNCH</div>`;
   }
   updateHud(
     a: number,
@@ -173,7 +173,7 @@ export class GameUI {
     return `<label class="range"><span>${label.toUpperCase()}</span><input data-setting="${key}" type="range" min="${min}" max="${max}" step="0.05" value="${value}" /></label>`;
   }
   private showHow(): void {
-    this.screen.innerHTML = `<main class="menu wide"><button class="back" data-action="back">← BACK</button><div class="eyebrow">HOW TO PLAY</div><h2>Own the platform</h2><div class="how-grid"><div><kbd>W A S D</kbd><strong>MOVE</strong><p>Camera-relative, full 360° control.</p></div><div><kbd>MOUSE</kbd><strong>LOOK</strong><p>Free third-person camera. No lock-on.</p></div><div><kbd>LMB</kbd><strong>PUNCH</strong><p>One committed, three-tile strike.</p></div><div><kbd>SHIFT</kbd><strong>DODGE</strong><p>Brief evasive burst with a cooldown.</p></div><div><kbd>SPACE</kbd><strong>JUMP</strong><p>Take high ground and escape hazards.</p></div><div><b>3</b><strong>WIN ROUNDS</strong><p>Knock your rival into the void.</p></div></div></main>`;
+    this.screen.innerHTML = `<main class="menu wide"><button class="back" data-action="back">← BACK</button><div class="eyebrow">HOW TO PLAY</div><h2>Outthink your rival</h2><div class="how-grid"><div><kbd>W A S D</kbd><strong>MOVE</strong><p>Fast, camera-relative 360° control.</p></div><div><kbd>MOUSE</kbd><strong>LOOK</strong><p>Aim every attack. There is no lock-on.</p></div><div><kbd>LMB</kbd><strong>PUNCH</strong><p>A committed 2.5-tile strike. Missing leaves you open.</p></div><div><kbd>SHIFT</kbd><strong>PERFECT DODGE</strong><p>Dodge a strike at the last moment to power your counter.</p></div><div><kbd>E</kbd><strong>BRACE</strong><p>Resist frontal hits, but move slowly and watch your flank.</p></div><div><kbd>SPACE</kbd><strong>JUMP</strong><p>Take high ground and escape hazards.</p></div><div><b>3</b><strong>WIN ROUNDS</strong><p>Use momentum, angles, and the arena to score ring-outs.</p></div></div></main>`;
     this.bind('back', () => this.showMain());
   }
   private showCredits(): void {

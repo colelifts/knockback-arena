@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 - Skill combat and smoother play
+
+- Raised movement speed and acceleration for faster, more immediate control.
+- Pulled the camera farther back and higher for a clearer top-down view of the arena.
+- Made clean punch knockback travel exactly 2.5 tiles before control returns.
+- Added committed punch recovery, momentum and flank bonuses, frontal bracing, and perfect-dodge counter bonuses.
+- Raised authoritative snapshots to 30 Hz and reduced remote interpolation delay to 65 ms.
+- Updated Bot Mode to use dodges and bracing while preserving one-punch, no-health combat.
+
 ## 1.1.0 - Snappy gameplay, audio, and sky-arena polish
 
 - Moved local physics to a bounded 60 Hz accumulator while preserving the 30 Hz server and 20 Hz snapshots.

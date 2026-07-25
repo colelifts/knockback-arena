@@ -4,6 +4,7 @@ export interface InputFrame {
   jump: boolean;
   dodge: boolean;
   punch: boolean;
+  brace: boolean;
 }
 export class InputController {
   private readonly keys = new Set<string>();
@@ -45,7 +46,8 @@ export class InputController {
     if (!enabled) this.keys.clear();
   }
   frame(): InputFrame {
-    if (!this.enabled) return { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false };
+    if (!this.enabled)
+      return { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false, brace: false };
     const moveX = Number(this.keys.has('KeyD')) - Number(this.keys.has('KeyA'));
     const moveZ = Number(this.keys.has('KeyW')) - Number(this.keys.has('KeyS'));
     const frame = {
@@ -54,6 +56,7 @@ export class InputController {
       jump: this.jumpQueued,
       dodge: this.dodgeQueued,
       punch: this.punchQueued,
+      brace: this.keys.has('KeyE'),
     };
     this.jumpQueued = false;
     this.dodgeQueued = false;

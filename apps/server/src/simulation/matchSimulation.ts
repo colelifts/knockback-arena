@@ -1,5 +1,7 @@
 import {
   BASE_KNOCKBACK,
+  BRACE_FRONT_KNOCKBACK_MULTIPLIER,
+  BRACE_MOVE_MULTIPLIER,
   BOUNCER_COOLDOWN_SECONDS,
   COLLAPSE_FIRST_SECONDS,
   COLLAPSE_INTERVAL_SECONDS,
@@ -17,8 +19,12 @@ import {
   PUNCH_ACTIVE_SECONDS,
   PUNCH_COOLDOWN_SECONDS,
   PUNCH_RECOVERY_SECONDS,
+  PUNCH_MOVE_MULTIPLIER,
   PUNCH_VERTICAL_KNOCKBACK,
   PUNCH_WINDUP_SECONDS,
+  FLANK_KNOCKBACK_MULTIPLIER,
+  PERFECT_DODGE_COUNTER_SECONDS,
+  PERFECT_DODGE_KNOCKBACK_MULTIPLIER,
   ROUND_COUNTDOWN_SECONDS,
   ROUND_TIME_LIMIT_SECONDS,
   ROUNDS_TO_WIN,
@@ -59,6 +65,8 @@ interface RuntimePlayer extends PlayerSnapshot {
   bouncerStart: { x: number; y: number; z: number };
   bouncerEnd: { x: number; y: number; z: number };
   controlLockedUntilTick: number;
+  counterReadyUntilTick: number;
+  bracing: boolean;
 }
 
 const emptyInput = (): PlayerInput => ({
@@ -71,6 +79,7 @@ const emptyInput = (): PlayerInput => ({
   jump: false,
   dodge: false,
   punch: false,
+  brace: false,
 });
 const ticks = (seconds: number): number => Math.round(seconds * SIMULATION_HZ);
 const sweptPointHitsExpandedWall = (
@@ -147,7 +156,11 @@ export class MatchSimulation {
       score: 0,
       lastProcessedInput: 0,
       stunnedUntilTick: 0,
-      input: emptyInput(),
+      input: {
+        ...emptyInput(),
+        facingX: index === 0 ? 1 : -1,
+        facingZ: 0,
+      },
       dodgeReadyTick: 0,
       dodgeUntilTick: 0,
       dodgeInvulnerableUntilTick: 0,
@@ -162,6 +175,8 @@ export class MatchSimulation {
       bouncerStart: { ...spawn },
       bouncerEnd: { ...spawn },
       controlLockedUntilTick: 0,
+      counterReadyUntilTick: 0,
+      bracing: false,
     });
   }
 
@@ -220,17 +235,23 @@ export class MatchSimulation {
     }
     const stunned = this.tick < player.stunnedUntilTick;
     const controlLocked = this.tick < player.controlLockedUntilTick;
+    const punchDuration = ticks(
+      PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS,
+    );
+    const punching = this.tick - player.punchStartedTick < punchDuration;
     if (stunned) {
       player.velocity.x = 0;
       player.velocity.z = 0;
       player.action = 'stunned';
+      player.bracing = false;
     } else if (controlLocked) {
       player.action = 'stunned';
+      player.bracing = false;
     } else {
       const inputLength = Math.hypot(player.input.moveX, player.input.moveZ);
       const inputX = inputLength > 1 ? player.input.moveX / inputLength : player.input.moveX;
       const inputZ = inputLength > 1 ? player.input.moveZ / inputLength : player.input.moveZ;
-      const wantsDodge = player.input.dodge && this.tick >= player.dodgeReadyTick;
+      const wantsDodge = player.input.dodge && this.tick >= player.dodgeReadyTick && !punching;
       if (wantsDodge) {
         const directionLength = Math.hypot(inputX, inputZ);
         const dx = directionLength > 0.1 ? inputX / directionLength : player.facing.x;
@@ -242,6 +263,7 @@ export class MatchSimulation {
         player.dodgeReadyTick = this.tick + ticks(DODGE_COOLDOWN_SECONDS);
       }
       const dodging = this.tick < player.dodgeUntilTick;
+      player.bracing = player.input.brace && player.grounded && !dodging && !punching;
       if (!dodging) {
         const horizontal = stepHorizontalVelocity(
           player.velocity,
@@ -249,11 +271,17 @@ export class MatchSimulation {
           inputZ,
           player.grounded,
           FIXED_STEP,
+          player.bracing ? BRACE_MOVE_MULTIPLIER : punching ? PUNCH_MOVE_MULTIPLIER : 1,
         );
         player.velocity.x = horizontal.x;
         player.velocity.z = horizontal.z;
       }
-      if (inputLength > 0.1) player.facing = { x: inputX, z: inputZ };
+      const facingLength = Math.hypot(player.input.facingX, player.input.facingZ);
+      if (facingLength > 0.1)
+        player.facing = {
+          x: player.input.facingX / facingLength,
+          z: player.input.facingZ / facingLength,
+        };
       if (player.grounded) player.lastGroundedTick = this.tick;
       if (player.input.jump) player.jumpBufferedUntil = this.tick + ticks(0.12);
       if (
@@ -265,21 +293,28 @@ export class MatchSimulation {
         player.jumpBufferedUntil = 0;
         player.lastGroundedTick = -999;
       }
-      if (player.input.punch && this.tick >= player.punchReadyTick && !dodging) {
+      if (
+        player.input.punch &&
+        this.tick >= player.punchReadyTick &&
+        !dodging &&
+        !player.bracing &&
+        !punching
+      ) {
         player.punchStartedTick = this.tick;
         player.punchReadyTick = this.tick + ticks(PUNCH_COOLDOWN_SECONDS);
         player.hitThisPunch = false;
       }
       player.action = dodging
         ? 'dodge'
-        : this.tick - player.punchStartedTick <
-            ticks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
+        : punching
           ? 'punch'
-          : !player.grounded
-            ? 'jump'
-            : inputLength > 0.1
-              ? 'run'
-              : 'idle';
+          : player.bracing
+            ? 'brace'
+            : !player.grounded
+              ? 'jump'
+              : inputLength > 0.1
+                ? 'run'
+                : 'idle';
     }
     player.velocity.y -= GRAVITY * FIXED_STEP;
     const previous = { ...player.position };
@@ -350,21 +385,37 @@ export class MatchSimulation {
       const active =
         age >= ticks(PUNCH_WINDUP_SECONDS) &&
         age < ticks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
-      if (!active || attacker.hitThisPunch || this.tick < target.dodgeInvulnerableUntilTick)
-        continue;
+      if (!active || attacker.hitThisPunch) continue;
       const forward = { x: attacker.facing.x, y: 0, z: attacker.facing.z };
       if (punchIsLegal(attacker.position, forward, target.position, arenaWalls)) {
+        if (this.tick < target.dodgeInvulnerableUntilTick) {
+          target.counterReadyUntilTick = this.tick + ticks(PERFECT_DODGE_COUNTER_SECONDS);
+          attacker.hitThisPunch = true;
+          continue;
+        }
         const forwardSpeed = Math.max(
           0,
           attacker.velocity.x * forward.x + attacker.velocity.z * forward.z,
         );
+        const targetFacesAttacker = target.facing.x * -forward.x + target.facing.z * -forward.z;
+        const directionMultiplier = targetFacesAttacker < 0.35 ? FLANK_KNOCKBACK_MULTIPLIER : 1;
+        const braceMultiplier =
+          target.bracing && targetFacesAttacker >= 0.35 ? BRACE_FRONT_KNOCKBACK_MULTIPLIER : 1;
+        const counterMultiplier =
+          attacker.counterReadyUntilTick >= this.tick ? PERFECT_DODGE_KNOCKBACK_MULTIPLIER : 1;
         const force =
-          BASE_KNOCKBACK * (1 + Math.min(0.18, forwardSpeed / 60)) * (target.grounded ? 1 : 1.12);
+          BASE_KNOCKBACK *
+          (1 + Math.min(0.22, forwardSpeed / 55)) *
+          (target.grounded ? 1 : 1.12) *
+          directionMultiplier *
+          braceMultiplier *
+          counterMultiplier;
         target.velocity.x = forward.x * force;
         target.velocity.z = forward.z * force;
         target.velocity.y = PUNCH_VERTICAL_KNOCKBACK;
         target.grounded = false;
-        target.controlLockedUntilTick = this.tick + ticks(HIT_CONTROL_LOCK_SECONDS);
+        target.controlLockedUntilTick = this.tick + ticks(HIT_CONTROL_LOCK_SECONDS) + 1;
+        attacker.counterReadyUntilTick = 0;
         attacker.hitThisPunch = true;
       }
     }
@@ -438,6 +489,8 @@ export class MatchSimulation {
       player.grounded = true;
       player.stunnedUntilTick = 0;
       player.controlLockedUntilTick = 0;
+      player.counterReadyUntilTick = 0;
+      player.bracing = false;
       player.dodgeUntilTick = 0;
       player.dodgeInvulnerableUntilTick = 0;
       player.punchStartedTick = -999;
@@ -503,6 +556,8 @@ export class MatchSimulation {
           bouncerStart: _l,
           bouncerEnd: _m,
           controlLockedUntilTick: _n,
+          counterReadyUntilTick: _o,
+          bracing: _p,
           ...player
         }) => player,
       ),

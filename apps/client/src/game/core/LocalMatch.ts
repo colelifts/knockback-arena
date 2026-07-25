@@ -4,6 +4,8 @@ import {
   ARENA_COLUMNS,
   ARENA_ROWS,
   BASE_KNOCKBACK,
+  BRACE_FRONT_KNOCKBACK_MULTIPLIER,
+  BRACE_MOVE_MULTIPLIER,
   CLIENT_FIXED_STEP,
   CLIENT_SIMULATION_HZ,
   COLLAPSE_FIRST_SECONDS,
@@ -22,8 +24,12 @@ import {
   PUNCH_ACTIVE_SECONDS,
   PUNCH_COOLDOWN_SECONDS,
   PUNCH_RECOVERY_SECONDS,
+  PUNCH_MOVE_MULTIPLIER,
   PUNCH_VERTICAL_KNOCKBACK,
   PUNCH_WINDUP_SECONDS,
+  FLANK_KNOCKBACK_MULTIPLIER,
+  PERFECT_DODGE_COUNTER_SECONDS,
+  PERFECT_DODGE_KNOCKBACK_MULTIPLIER,
   ROUND_COUNTDOWN_SECONDS,
   ROUNDS_TO_WIN,
   TILE_SIZE,
@@ -69,6 +75,8 @@ interface Fighter {
   grounded: boolean;
   controlLockedUntil: number;
   footstepReadyTick: number;
+  counterReadyUntil: number;
+  bracing: boolean;
 }
 const secondsToTicks = (seconds: number) => Math.round(seconds * CLIENT_SIMULATION_HZ);
 
@@ -121,7 +129,7 @@ export class LocalMatch {
       id,
       body,
       avatar,
-      input: { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false },
+      input: { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false, brace: false },
       score: 0,
       dodgeReady: 0,
       dodgeUntil: 0,
@@ -139,6 +147,8 @@ export class LocalMatch {
       grounded: true,
       controlLockedUntil: 0,
       footstepReadyTick: 0,
+      counterReadyUntil: 0,
+      bracing: false,
     };
   }
   setHumanInput(input: InputFrame, cameraForward: THREE.Vector3, cameraRight: THREE.Vector3): void {
@@ -146,6 +156,7 @@ export class LocalMatch {
       jump: input.jump || this.human.input.jump,
       dodge: input.dodge || this.human.input.dodge,
       punch: input.punch || this.human.input.punch,
+      brace: input.brace,
       moveX: cameraRight.x * input.moveX + cameraForward.x * input.moveZ,
       moveZ: cameraRight.z * input.moveX + cameraForward.z * input.moveZ,
     };
@@ -220,6 +231,10 @@ export class LocalMatch {
   private stepFighter(fighter: Fighter): void {
     const stunned = this.tick < fighter.stunUntil;
     const controlLocked = this.tick < fighter.controlLockedUntil;
+    const punchDuration = secondsToTicks(
+      PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS,
+    );
+    const punching = this.tick - fighter.punchStart < punchDuration;
     const launched = this.tick < fighter.bouncerUntil;
     if (launched) {
       const duration = secondsToTicks(1.15);
@@ -231,10 +246,12 @@ export class LocalMatch {
       return;
     }
     if (stunned || this.phase !== 'playing') {
+      fighter.bracing = false;
       fighter.body.setLinvel({ x: 0, y: fighter.body.linvel().y, z: 0 }, true);
       return;
     }
     if (controlLocked) {
+      fighter.bracing = false;
       fighter.grounded = this.isGrounded(fighter);
       return;
     }
@@ -242,7 +259,7 @@ export class LocalMatch {
     const length = Math.hypot(fighter.input.moveX, fighter.input.moveZ);
     const dx = length > 1 ? fighter.input.moveX / length : fighter.input.moveX;
     const dz = length > 1 ? fighter.input.moveZ / length : fighter.input.moveZ;
-    if (fighter.input.dodge && this.tick >= fighter.dodgeReady) {
+    if (fighter.input.dodge && this.tick >= fighter.dodgeReady && !punching) {
       const useX = length > 0.1 ? dx : Math.sin(fighter.facingYaw);
       const useZ = length > 0.1 ? dz : Math.cos(fighter.facingYaw);
       fighter.body.setLinvel({ x: useX * DODGE_SPEED, y: velocity.y, z: useZ * DODGE_SPEED }, true);
@@ -251,13 +268,17 @@ export class LocalMatch {
       fighter.dodgeReady = this.tick + secondsToTicks(DODGE_COOLDOWN_SECONDS);
       void this.audio.play('dodge', fighter.body.translation(), this.human.body.translation());
       this.onEvent('dodge', { position: fighter.body.translation(), yaw: fighter.facingYaw });
-    } else if (this.tick >= fighter.dodgeUntil) {
+    }
+    const dodging = this.tick < fighter.dodgeUntil;
+    fighter.bracing = fighter.input.brace && fighter.grounded && !dodging && !punching;
+    if (!dodging) {
       const horizontal = stepHorizontalVelocity(
         velocity,
         dx,
         dz,
         fighter.grounded,
         CLIENT_FIXED_STEP,
+        fighter.bracing ? BRACE_MOVE_MULTIPLIER : punching ? PUNCH_MOVE_MULTIPLIER : 1,
       );
       fighter.body.setLinvel(
         {
@@ -279,7 +300,13 @@ export class LocalMatch {
       fighter.lastGroundedTick = -999;
       void this.audio.play('jump', fighter.body.translation(), this.human.body.translation());
     }
-    if (fighter.input.punch && this.tick >= fighter.punchReady && this.tick >= fighter.dodgeUntil) {
+    if (
+      fighter.input.punch &&
+      this.tick >= fighter.punchReady &&
+      !dodging &&
+      !fighter.bracing &&
+      !punching
+    ) {
       fighter.punchStart = this.tick;
       fighter.punchReady = this.tick + secondsToTicks(PUNCH_COOLDOWN_SECONDS);
       fighter.hit = false;
@@ -303,7 +330,7 @@ export class LocalMatch {
     const active =
       age >= secondsToTicks(PUNCH_WINDUP_SECONDS) &&
       age < secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
-    if (!active || attacker.hit || this.tick < target.dodgeInvulnerableUntil) return;
+    if (!active || attacker.hit) return;
     const source = attacker.body.translation();
     const destination = target.body.translation();
     const forward = {
@@ -330,16 +357,40 @@ export class LocalMatch {
       attacker.body,
     );
     if (hit && hit.collider.parent() !== target.body) return;
+    if (this.tick < target.dodgeInvulnerableUntil) {
+      target.counterReadyUntil = this.tick + secondsToTicks(PERFECT_DODGE_COUNTER_SECONDS);
+      attacker.hit = true;
+      return;
+    }
+    const targetFacesAttacker =
+      Math.sin(target.facingYaw) * -forward.x + Math.cos(target.facingYaw) * -forward.z;
+    const directionMultiplier = targetFacesAttacker < 0.35 ? FLANK_KNOCKBACK_MULTIPLIER : 1;
+    const braceMultiplier =
+      target.bracing && targetFacesAttacker >= 0.35 ? BRACE_FRONT_KNOCKBACK_MULTIPLIER : 1;
+    const counterMultiplier =
+      attacker.counterReadyUntil >= this.tick ? PERFECT_DODGE_KNOCKBACK_MULTIPLIER : 1;
+    const forwardSpeed = Math.max(
+      0,
+      attacker.body.linvel().x * forward.x + attacker.body.linvel().z * forward.z,
+    );
+    const force =
+      BASE_KNOCKBACK *
+      (1 + Math.min(0.22, forwardSpeed / 55)) *
+      (target.grounded ? 1 : 1.12) *
+      directionMultiplier *
+      braceMultiplier *
+      counterMultiplier;
     target.body.setLinvel(
       {
-        x: forward.x * BASE_KNOCKBACK,
+        x: forward.x * force,
         y: PUNCH_VERTICAL_KNOCKBACK,
-        z: forward.z * BASE_KNOCKBACK,
+        z: forward.z * force,
       },
       true,
     );
     target.controlLockedUntil = this.tick + secondsToTicks(HIT_CONTROL_LOCK_SECONDS);
     attacker.hit = true;
+    attacker.counterReadyUntil = 0;
     void this.audio.play('hit', destination, this.human.body.translation());
     this.onEvent('hit', { position: destination });
   }
@@ -434,6 +485,8 @@ export class LocalMatch {
       fighter.dodgeInvulnerableUntil = 0;
       fighter.punchStart = -999;
       fighter.controlLockedUntil = 0;
+      fighter.counterReadyUntil = 0;
+      fighter.bracing = false;
       fighter.stunUntil = 0;
       fighter.grounded = true;
     }
@@ -458,11 +511,13 @@ export class LocalMatch {
             : this.tick - fighter.punchStart <
                 secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
               ? 'punch'
-              : !fighter.grounded
-                ? 'jump'
-                : speed > 0.8
-                  ? 'run'
-                  : 'idle';
+              : fighter.bracing
+                ? 'brace'
+                : !fighter.grounded
+                  ? 'jump'
+                  : speed > 0.8
+                    ? 'run'
+                    : 'idle';
     fighter.avatar.setAction(action);
     if (action === 'run' && fighter.grounded && this.tick >= fighter.footstepReadyTick) {
       fighter.footstepReadyTick = this.tick + secondsToTicks(0.34);
@@ -497,9 +552,11 @@ export class LocalMatch {
             : this.tick - this.human.punchStart <
                 secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
               ? 'punch'
-              : Math.hypot(velocity.x, velocity.z) > 0.8
-                ? 'run'
-                : 'idle',
+              : this.human.bracing
+                ? 'brace'
+                : Math.hypot(velocity.x, velocity.z) > 0.8
+                  ? 'run'
+                  : 'idle',
     };
   }
   testRingOutHuman(): void {

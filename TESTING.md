@@ -15,7 +15,7 @@ npm run test:e2e
 node scripts/playtest-game.mjs
 ```
 
-Unit tests cover seeded random generation, room codes, input schemas, ring calculations, active tiles, collapse order, safe bouncer landings, the exact meteor stun constant, punch cone/range, wall blocking, ring-outs, simultaneous draws, reconnection expiry, matchmaking, and room cleanup. Socket integration tests create/join/ready a room, submit authoritative input, receive snapshots, reject invalid input, and pair Quick Play clients. Playwright covers menu load, Bot Mode startup, movement, floor stability, punch, pause, persistent settings, offline online-menu behavior, and room-code validation.
+Unit tests cover seeded random generation, room codes, input schemas, ring calculations, active tiles, collapse order, safe bouncer landings, the exact meteor stun constant, exact 2.5-tile knockback, bracing, perfect-dodge counters, punch cone/range, wall blocking, ring-outs, simultaneous draws, reconnection expiry, matchmaking, and room cleanup. Socket integration tests create/join/ready a room, submit authoritative input, receive snapshots, reject invalid input, and pair Quick Play clients. Playwright covers menu load, Bot Mode startup, movement, floor stability, punch, pause, persistent settings, offline online-menu behavior, and room-code validation.
 
 `node scripts/production-smoke.mjs` runs the deployed two-browser private-room, authoritative-movement, console-error, and reconnect check and records `docs/production-smoke.json` plus a production screenshot.
 
@@ -39,7 +39,10 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 - [ ] Rotate the camera 360°, zoom both ways, and test collision against the tower and walls.
 - [ ] Verify the camera never turns toward the opponent without mouse input and no lock-on exists.
 - [ ] Verify punch reach is about 2.5 tiles, forward-only, and blocked by walls.
-- [ ] Verify there is no health, damage, stamina, heavy attack, block, grab, or special UI.
+- [ ] Verify a clean stationary punch moves its target exactly 2.5 tiles before control returns.
+- [ ] Verify E braces against frontal knockback, slows movement, and does not protect the flank.
+- [ ] Perfect-dodge an active punch and verify the next counter has stronger knockback.
+- [ ] Verify there is no health, damage, stamina, heavy attack, grab, or special UI.
 
 ### Hazards and round flow
 

@@ -95,6 +95,7 @@ describe('socket integration', () => {
         jump: false,
         dodge: false,
         punch: false,
+        brace: false,
       });
       const state = await snapshotWithInput(first, 7);
       expect(state.players.some((player) => player.lastProcessedInput === 7)).toBe(true);

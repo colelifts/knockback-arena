@@ -27,12 +27,13 @@ export const stepHorizontalVelocity = (
   inputZ: number,
   grounded: boolean,
   dt: number,
+  speedMultiplier = 1,
 ): HorizontalVelocity => {
   const inputLength = Math.hypot(inputX, inputZ);
   const normalizedX = inputLength > 1 ? inputX / inputLength : inputX;
   const normalizedZ = inputLength > 1 ? inputZ / inputLength : inputZ;
   const hasInput = inputLength > 0.001;
-  const targetSpeed = grounded ? MOVE_SPEED : AIR_MOVE_SPEED;
+  const targetSpeed = (grounded ? MOVE_SPEED : AIR_MOVE_SPEED) * speedMultiplier;
   const target = hasInput
     ? { x: normalizedX * targetSpeed, z: normalizedZ * targetSpeed }
     : { x: 0, z: 0 };
@@ -46,8 +47,9 @@ export const stepHorizontalVelocity = (
         : GROUND_ACCELERATION;
   const next = moveToward(velocity, target, acceleration * dt);
   const speed = Math.hypot(next.x, next.z);
-  if (speed <= MAX_MOVE_SPEED) return next;
-  return { x: (next.x / speed) * MAX_MOVE_SPEED, z: (next.z / speed) * MAX_MOVE_SPEED };
+  const maximum = MAX_MOVE_SPEED * speedMultiplier;
+  if (speed <= maximum) return next;
+  return { x: (next.x / speed) * maximum, z: (next.z / speed) * maximum };
 };
 
 export const shortestAngleDelta = (from: number, to: number): number =>

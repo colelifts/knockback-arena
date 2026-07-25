@@ -11,6 +11,7 @@ const input = (sequence: number, overrides: Record<string, unknown> = {}) => ({
   jump: false,
   dodge: false,
   punch: false,
+  brace: false,
   ...overrides,
 });
 
@@ -23,7 +24,7 @@ const playingSimulation = () => {
 };
 
 describe('authoritative match movement and combat', () => {
-  it('applies tuned punch knockback and preserves momentum through the control lock', () => {
+  it('moves a stationary target exactly 2.5 tiles before returning control', () => {
     const simulation = playingSimulation();
     simulation.testSetPlayerPosition('attacker', { x: -5, y: 1.75, z: 20 });
     simulation.testSetPlayerPosition('target', { x: 4, y: 1.75, z: 20 });
@@ -32,12 +33,53 @@ describe('authoritative match movement and combat', () => {
     simulation.setInput('attacker', input(2));
     for (let tick = 0; tick < 4; tick += 1) simulation.step();
     let target = simulation.snapshot().players.find((player) => player.id === 'target')!;
-    expect(target.velocity.x).toBeCloseTo(11.5, 1);
+    const hitPosition = target.position.x;
+    expect(target.velocity.x).toBeCloseTo(10 / 0.6, 1);
     expect(target.velocity.y).toBeCloseTo(3.4, 1);
-    simulation.step();
+    for (let tick = 0; tick < 18; tick += 1) simulation.step();
     target = simulation.snapshot().players.find((player) => player.id === 'target')!;
-    expect(target.velocity.x).toBeGreaterThan(10);
-    expect(target.action).toBe('stunned');
+    expect(target.position.x - hitPosition).toBeCloseTo(10, 4);
+  });
+
+  it('lets a front-facing brace sharply reduce knockback', () => {
+    const simulation = playingSimulation();
+    simulation.testSetPlayerPosition('attacker', { x: -5, y: 1.75, z: 20 });
+    simulation.testSetPlayerPosition('target', { x: 4, y: 1.75, z: 20 });
+    simulation.setInput('target', input(1, { facingX: -1, brace: true }));
+    simulation.setInput('attacker', input(1, { punch: true }));
+    simulation.step();
+    simulation.setInput('attacker', input(2));
+    for (let tick = 0; tick < 4; tick += 1) simulation.step();
+    const target = simulation.snapshot().players.find((player) => player.id === 'target')!;
+    expect(target.velocity.x).toBeCloseTo((10 / 0.6) * 0.38, 1);
+  });
+
+  it('rewards a perfect dodge with a stronger counter-punch', () => {
+    const simulation = playingSimulation();
+    simulation.testSetPlayerPosition('attacker', { x: -5, y: 1.75, z: 20 });
+    simulation.testSetPlayerPosition('target', { x: 4, y: 1.75, z: 20 });
+    simulation.setInput('attacker', input(1, { punch: true }));
+    simulation.step();
+    simulation.setInput('attacker', input(2));
+    simulation.step();
+    simulation.setInput('target', input(1, { facingX: -1, dodge: true }));
+    simulation.step();
+    simulation.setInput('target', input(2, { facingX: -1 }));
+    simulation.step();
+    simulation.step();
+
+    const dodger = simulation.snapshot().players.find((player) => player.id === 'target')!;
+    expect(dodger.velocity.x).toBeLessThan(0);
+
+    simulation.testSetPlayerPosition('attacker', { x: -5, y: 1.75, z: 20 });
+    simulation.testSetPlayerPosition('target', { x: 4, y: 1.75, z: 20 });
+    for (let tick = 0; tick < 5; tick += 1) simulation.step();
+    simulation.setInput('target', input(3, { facingX: -1, punch: true }));
+    simulation.step();
+    simulation.setInput('target', input(4, { facingX: -1 }));
+    for (let tick = 0; tick < 4; tick += 1) simulation.step();
+    const countered = simulation.snapshot().players.find((player) => player.id === 'attacker')!;
+    expect(countered.velocity.x).toBeCloseTo(-(10 / 0.6) * 1.3, 1);
   });
 
   it('rejects the same punch through the center obstacle', () => {

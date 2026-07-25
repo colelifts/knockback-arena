@@ -33,6 +33,7 @@ Knockback Arena is a third-person 3D party fighter for the browser. Two stylized
 | Space         | Jump                         |
 | Left mouse    | Punch                        |
 | Shift         | Directional dodge            |
+| E             | Directional brace            |
 | Escape        | Pause / release pointer lock |
 
 The camera never automatically rotates toward the opponent and there is no lock-on key.
@@ -47,7 +48,7 @@ flowchart LR
   Protocol --> Server["30 Hz authoritative server"]
   Server --> Rooms["Rooms + Quick Play + reconnect"]
   Server --> Simulation["Movement, combat, hazards, rounds"]
-  Simulation --> Snapshot["20 Hz authoritative snapshots"]
+  Simulation --> Snapshot["30 Hz authoritative snapshots"]
   Snapshot --> View
   Shared["Shared constants, schemas, arena math, seeded RNG"] --> Prediction
   Shared --> Server
@@ -123,7 +124,7 @@ The Vite client is configured for Vercel and the persistent Socket.IO server is 
 ## Current limitations
 
 - Desktop keyboard/mouse is the gameplay target; mobile menus work but touch combat is not claimed.
-- Online movement is predicted immediately, replays unacknowledged inputs during thresholded reconciliation, and renders remote players from a 100 ms interpolation buffer.
+- Online movement is predicted immediately, replays unacknowledged inputs during thresholded reconciliation, and renders remote players from a 65 ms interpolation buffer.
 - Spectator-compatible snapshots exist, but there is no public spectator UI.
 - Music and effects are repo-local CC0 assets with OGG/MP3 fallback, separate mixer buses, and positional gameplay attenuation. See `docs/audio-selection.md`.
 - Append `?debug=1` for live frame, physics, network, prediction, body, draw, triangle, movement, grounded, and action diagnostics.

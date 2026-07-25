@@ -47,6 +47,7 @@ describe('deterministic shared game rules', () => {
       jump: false,
       dodge: true,
       punch: false,
+      brace: false,
     };
     expect(playerInputSchema.safeParse(valid).success).toBe(true);
     expect(playerInputSchema.safeParse({ ...valid, moveX: 2, position: { x: 100 } }).success).toBe(
@@ -91,8 +92,8 @@ describe('deterministic shared game rules', () => {
   it('keeps punch timing and dodge travel inside the tuned windows', () => {
     expect(PUNCH_WINDUP_SECONDS).toBeGreaterThanOrEqual(0.12);
     expect(PUNCH_ACTIVE_SECONDS).toBeGreaterThanOrEqual(0.08);
-    expect(PUNCH_COOLDOWN_SECONDS).toBeGreaterThanOrEqual(0.48);
-    expect(PUNCH_COOLDOWN_SECONDS).toBeLessThanOrEqual(0.58);
+    expect(PUNCH_COOLDOWN_SECONDS).toBeGreaterThanOrEqual(0.65);
+    expect(PUNCH_COOLDOWN_SECONDS).toBeLessThanOrEqual(0.72);
     expect(DODGE_SPEED * DODGE_SECONDS).toBeCloseTo(4.8, 5);
   });
   it('rotates through the shortest wrapped angle without overshoot', () => {

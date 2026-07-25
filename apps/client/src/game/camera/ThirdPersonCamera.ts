@@ -17,8 +17,8 @@ export const applyVerticalLook = (
 
 export class ThirdPersonCamera {
   yaw = -Math.PI / 2;
-  pitch = 0.32;
-  distance = 11;
+  pitch = 0.58;
+  distance = 14.5;
   private current = new THREE.Vector3();
   private readonly focus = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
@@ -38,7 +38,7 @@ export class ThirdPersonCamera {
     );
   }
   zoom(delta: number): void {
-    this.distance = THREE.MathUtils.clamp(this.distance + Math.sign(delta) * 1.1, 6.5, 16);
+    this.distance = THREE.MathUtils.clamp(this.distance + Math.sign(delta) * 1.1, 9, 19);
   }
   forward(): THREE.Vector3 {
     return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
@@ -62,7 +62,7 @@ export class ThirdPersonCamera {
     );
     const hit = raycast(focus, desired);
     if (hit !== null) desired.lerp(focus, Math.max(0, 1 - (hit - 0.5) / this.distance));
-    const follow = 1 - Math.exp(-dt * 12);
+    const follow = 1 - Math.exp(-dt * 14);
     if (this.current.lengthSq() === 0) this.current.copy(desired);
     else this.current.lerp(desired, follow);
     this.camera.position.copy(this.current);
@@ -74,7 +74,7 @@ export class ThirdPersonCamera {
     this.camera.lookAt(focus);
     this.camera.fov = THREE.MathUtils.lerp(
       this.camera.fov,
-      62 + Math.min(9, speed * 0.55),
+      60 + Math.min(4, speed * 0.25),
       1 - Math.exp(-dt * 7),
     );
     this.camera.updateProjectionMatrix();

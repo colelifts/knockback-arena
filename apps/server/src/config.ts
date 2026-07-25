@@ -9,7 +9,7 @@ const environmentSchema = z.object({
       'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173',
     ),
   GAME_TICK_RATE: z.coerce.number().int().min(10).max(60).default(30),
-  SNAPSHOT_RATE: z.coerce.number().int().min(5).max(30).default(20),
+  SNAPSHOT_RATE: z.coerce.number().int().min(5).max(30).default(30),
   ROOM_RECONNECT_SECONDS: z.coerce.number().int().min(5).max(120).default(15),
   ROOM_IDLE_MINUTES: z.coerce.number().int().min(1).max(120).default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),

@@ -3,14 +3,21 @@ import type { RigidBody } from '@dimforge/rapier3d-compat';
 
 export type BotDifficulty = 'easy' | 'normal' | 'hard';
 const profiles = {
-  easy: { reaction: 0.42, aggression: 0.48, dodge: 0.16 },
-  normal: { reaction: 0.24, aggression: 0.7, dodge: 0.32 },
-  hard: { reaction: 0.14, aggression: 0.86, dodge: 0.5 },
+  easy: { reaction: 0.42, aggression: 0.48, dodge: 0.16, brace: 0.12 },
+  normal: { reaction: 0.24, aggression: 0.7, dodge: 0.32, brace: 0.28 },
+  hard: { reaction: 0.14, aggression: 0.86, dodge: 0.5, brace: 0.42 },
 };
 
 export class BotController {
   private timer = 0;
-  private decision: InputFrame = { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false };
+  private decision: InputFrame = {
+    moveX: 0,
+    moveZ: 0,
+    jump: false,
+    dodge: false,
+    punch: false,
+    brace: false,
+  };
   private stuckTimer = 0;
   private lastPosition = { x: Number.NaN, z: Number.NaN };
   constructor(private readonly difficulty: BotDifficulty) {}
@@ -57,6 +64,7 @@ export class BotController {
       jump: recovering || (Math.random() < 0.08 && distance > 6),
       dodge: recovering || (distance < 11 && Math.random() < profile.dodge),
       punch: distance < 9.7 && Math.random() < profile.aggression,
+      brace: distance < 10.5 && Math.random() < profile.brace,
     };
     return this.decision;
   }

@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   CLIENT_FIXED_STEP,
+  BRACE_MOVE_MULTIPLIER,
   DODGE_SPEED,
   FIXED_STEP,
   GRAVITY,
@@ -346,6 +347,7 @@ export class GameEngine {
         jump: this.pendingJump,
         dodge: this.pendingDodge,
         punch: this.pendingPunch,
+        brace: input.brace,
       };
       this.pendingJump = false;
       this.pendingDodge = false;
@@ -362,13 +364,14 @@ export class GameEngine {
         moveZ,
         localSnapshot.grounded,
         dt,
+        input.brace ? BRACE_MOVE_MULTIPLIER : 1,
       );
       this.predictedVelocity.x = next.x;
       this.predictedVelocity.z = next.z;
       this.predictedPosition.x += next.x * dt;
       this.predictedPosition.z += next.z * dt;
     }
-    const renderTick = snapshot.tick - SIMULATION_HZ * 0.1;
+    const renderTick = snapshot.tick - SIMULATION_HZ * 0.065;
     const earlier = [...this.snapshotBuffer].reverse().find((item) => item.tick <= renderTick);
     const later = this.snapshotBuffer.find((item) => item.tick >= renderTick) ?? snapshot;
     const interpolation = earlier
@@ -542,6 +545,7 @@ export class GameEngine {
         input.moveZ,
         authoritative.grounded,
         FIXED_STEP,
+        input.brace ? BRACE_MOVE_MULTIPLIER : 1,
       );
       replayPosition.x += replayVelocity.x * FIXED_STEP;
       replayPosition.z += replayVelocity.z * FIXED_STEP;

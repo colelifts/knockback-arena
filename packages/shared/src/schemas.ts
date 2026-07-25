@@ -18,6 +18,7 @@ export const playerInputSchema = z.object({
   jump: z.boolean(),
   dodge: z.boolean(),
   punch: z.boolean(),
+  brace: z.boolean(),
 });
 export const helloSchema = z.object({
   version: z.literal(GAME_VERSION),

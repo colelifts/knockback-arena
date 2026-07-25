@@ -17,6 +17,7 @@ export interface PlayerSnapshot {
     | 'jump'
     | 'punch'
     | 'dodge'
+    | 'brace'
     | 'stunned'
     | 'launched'
     | 'fall'

@@ -23,7 +23,7 @@ describe('shared movement controller', () => {
     const diagonal = simulate(60, 1, 1);
     expect(Math.hypot(diagonal.velocity.x, diagonal.velocity.z)).toBeCloseTo(MOVE_SPEED, 5);
     const braking = stepHorizontalVelocity({ x: MOVE_SPEED, z: 0 }, 0, 0, true, 0.1);
-    expect(braking.x).toBeCloseTo(2.05, 2);
+    expect(braking.x).toBe(0);
     const reversing = stepHorizontalVelocity({ x: MOVE_SPEED, z: 0 }, -1, 0, true, 0.1);
     expect(reversing.x).toBeLessThan(braking.x);
   });

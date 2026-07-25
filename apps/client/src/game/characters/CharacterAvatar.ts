@@ -156,6 +156,14 @@ export class CharacterAvatar extends THREE.Group {
       this.rightArm.rotation.x = -1.7 * swing;
       this.rightArm.rotation.z = -0.2 * swing;
     }
+    if (this.action === 'brace') {
+      this.leftArm.rotation.x = -1.15;
+      this.rightArm.rotation.x = -1.15;
+      this.leftArm.rotation.z = -0.35;
+      this.rightArm.rotation.z = 0.35;
+      this.leftLeg.rotation.x = 0.18;
+      this.rightLeg.rotation.x = 0.18;
+    }
     if (this.action === 'dodge') {
       this.scale.set(1.2, 0.72, 1.35);
       this.rotation.z = cycle * 0.05;
