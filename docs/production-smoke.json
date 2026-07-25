@@ -6,8 +6,6 @@
   "authoritativeMovementMeters": 8.31,
   "remoteSnapshotReceived": true,
   "reconnectResumedAtTick": 142,
-  "expectedOfflineErrors": [
-    "B: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
-  ],
+  "expectedOfflineErrors": ["B: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"],
   "unexpectedConsoleErrors": []
 }
