@@ -18,6 +18,10 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 
 `node scripts/production-smoke.mjs` runs the deployed two-browser private-room, authoritative-movement, console-error, and reconnect check and records `docs/production-smoke.json` plus a production screenshot.
 
+## Dependency audit
+
+`npm audit --omit=dev` reports zero production vulnerabilities. The full development-tree audit reports five high-severity entries in the ESLint-only `minimatch` → `brace-expansion` chain (GHSA-mh99-v99m-4gvg, denial of service through unbounded pattern expansion). These packages are not shipped to either runtime and do not process player input. npm's available remediation is a major ESLint 10 upgrade; it is intentionally deferred until the TypeScript ESLint peer range supports that upgrade, rather than forcing an incompatible linter install.
+
 ## Manual release checklist
 
 ### Gameplay and frame pacing
