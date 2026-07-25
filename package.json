@@ -1,0 +1,39 @@
+{
+  "name": "knockback-arena",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n client,server -c cyan,magenta \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:client": "npm run dev --workspace @knockback/client",
+    "dev:server": "npm run dev --workspace @knockback/server",
+    "preview": "npm run preview --workspace @knockback/client",
+    "build": "npm run build --workspace @knockback/shared && npm run build --workspace @knockback/server && npm run build --workspace @knockback/client",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck --workspace @knockback/shared && npm run typecheck --workspace @knockback/server && npm run typecheck --workspace @knockback/client",
+    "test": "npm run build --workspace @knockback/shared && vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
+    "start": "npm run start --workspace @knockback/server",
+    "audit:production": "npm audit --omit=dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.50.0",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}
