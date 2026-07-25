@@ -74,6 +74,9 @@ try {
     { timeout: 15_000 },
   );
   const restored = await pageB.evaluate(() => globalThis.__KA_TEST__.state());
+  const unexpectedConsoleErrors = consoleErrors.filter(
+    (message) => !message.includes('ERR_INTERNET_DISCONNECTED'),
+  );
   await mkdir(resolve('docs/screenshots'), { recursive: true });
   await pageA.screenshot({ path: resolve('docs/screenshots/online-production.png') });
   const report = {
@@ -84,11 +87,14 @@ try {
     authoritativeMovementMeters: Number(moved.toFixed(2)),
     remoteSnapshotReceived: Boolean(remoteA),
     reconnectResumedAtTick: restored.tick,
-    consoleErrors,
+    expectedOfflineErrors: consoleErrors.filter((message) =>
+      message.includes('ERR_INTERNET_DISCONNECTED'),
+    ),
+    unexpectedConsoleErrors,
   };
   await writeFile(resolve('docs/production-smoke.json'), `${JSON.stringify(report, null, 2)}\n`);
-  if (consoleErrors.length > 0)
-    throw new Error(`Production console errors: ${consoleErrors.join(' | ')}`);
+  if (unexpectedConsoleErrors.length > 0)
+    throw new Error(`Production console errors: ${unexpectedConsoleErrors.join(' | ')}`);
   globalThis.console.log(JSON.stringify(report, null, 2));
 } finally {
   await browser.close();

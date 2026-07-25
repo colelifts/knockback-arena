@@ -42,3 +42,11 @@ npx vercel --prod
 - Confirm no development URL or secret appears in the production bundle or server logs.
 
 Free-tier hosting is appropriate for hobby testing, not guaranteed uptime.
+
+## Current production release
+
+- Client: `https://knockback-arena.vercel.app`
+- Server: `https://knockback-arena-server.onrender.com`
+- Source: `https://github.com/colelifts/knockback-arena`
+
+The release smoke test opened two isolated Chromium contexts, created and joined a real private room, readied both clients, entered the authoritative match, propagated 8.31 metres of movement to the remote snapshot, forced a 1.5-second network outage, and resumed at server tick 142. There were no unexpected console errors. The machine-readable result is in `docs/production-smoke.json`.

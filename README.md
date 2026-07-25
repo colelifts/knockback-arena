@@ -7,6 +7,7 @@ Knockback Arena is a third-person 3D party fighter for the browser. Two stylized
 ![Main menu](docs/screenshots/main-menu.png)
 ![Bot match](docs/screenshots/bot-match.png)
 ![Meteor warning](docs/screenshots/meteor-warning.png)
+![Production online room](docs/screenshots/online-production.png)
 
 ## Features
 
@@ -105,6 +106,10 @@ See [TESTING.md](TESTING.md) for the manual cross-browser, network, performance,
 ## Deployment
 
 The Vite client is configured for Vercel and the persistent Socket.IO server is configured for a Render Web Service. See [DEPLOYMENT.md](DEPLOYMENT.md) for the production order, environment values, cold-start behavior, CORS handoff, and two-browser verification.
+
+- Production game: [https://knockback-arena.vercel.app](https://knockback-arena.vercel.app)
+- Multiplayer server: [https://knockback-arena-server.onrender.com](https://knockback-arena-server.onrender.com)
+- Source: [https://github.com/colelifts/knockback-arena](https://github.com/colelifts/knockback-arena)
 
 ## Troubleshooting
 

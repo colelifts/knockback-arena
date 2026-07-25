@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-07-25T06:24:15.725Z",
+  "productionUrl": "https://knockback-arena.vercel.app",
+  "roomCode": "X78HN",
+  "twoBrowsersStarted": true,
+  "authoritativeMovementMeters": 8.31,
+  "remoteSnapshotReceived": true,
+  "reconnectResumedAtTick": 142,
+  "expectedOfflineErrors": ["B: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"],
+  "unexpectedConsoleErrors": []
+}

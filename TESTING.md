@@ -16,6 +16,8 @@ npm run test:e2e
 
 Unit tests cover seeded random generation, room codes, input schemas, ring calculations, active tiles, collapse order, safe bouncer landings, the exact meteor stun constant, punch cone/range, wall blocking, ring-outs, simultaneous draws, reconnection expiry, matchmaking, and room cleanup. Socket integration tests create/join/ready a room, submit authoritative input, receive snapshots, reject invalid input, and pair Quick Play clients. Playwright covers menu load, Bot Mode startup, movement, floor stability, punch, pause, persistent settings, offline online-menu behavior, and room-code validation.
 
+`node scripts/production-smoke.mjs` runs the deployed two-browser private-room, authoritative-movement, console-error, and reconnect check and records `docs/production-smoke.json` plus a production screenshot.
+
 ## Manual release checklist
 
 ### Gameplay and frame pacing
