@@ -1,6 +1,7 @@
 import {
   AIR_ACCELERATION,
   BASE_KNOCKBACK,
+  BOUNCER_COOLDOWN_SECONDS,
   COLLAPSE_FIRST_SECONDS,
   COLLAPSE_INTERVAL_SECONDS,
   COLLAPSE_WARNING_SECONDS,
@@ -22,9 +23,12 @@ import {
   SIMULATION_HZ,
   activeTiles,
   collapseOrder,
+  generateBouncers,
   isTileActive,
   punchIsLegal,
   resolveRingOuts,
+  ringForTile,
+  safeBouncerLanding,
   tileToWorld,
   worldToTile,
   type CharacterChoice,
@@ -43,6 +47,13 @@ interface RuntimePlayer extends PlayerSnapshot {
   punchReadyTick: number;
   punchStartedTick: number;
   hitThisPunch: boolean;
+  lastGroundedTick: number;
+  jumpBufferedUntil: number;
+  bouncerStartedTick: number;
+  bouncerUntilTick: number;
+  bouncerCooldownTick: number;
+  bouncerStart: { x: number; y: number; z: number };
+  bouncerEnd: { x: number; y: number; z: number };
 }
 
 const emptyInput = (): PlayerInput => ({
@@ -71,6 +82,7 @@ export class MatchSimulation {
   private phaseStartedTick = 0;
   private nextMeteorTick: number;
   private meteorId = 0;
+  private readonly bouncers: ReturnType<typeof generateBouncers>;
 
   constructor(
     readonly roomCode: string,
@@ -79,6 +91,7 @@ export class MatchSimulation {
     this.seed = seed;
     this.random = new SeededRandom(seed);
     this.nextMeteorTick = ticks(6);
+    this.bouncers = generateBouncers(seed);
   }
 
   addPlayer(id: string, name: string, character: CharacterChoice): void {
@@ -102,6 +115,13 @@ export class MatchSimulation {
       punchReadyTick: 0,
       punchStartedTick: -999,
       hitThisPunch: false,
+      lastGroundedTick: 0,
+      jumpBufferedUntil: 0,
+      bouncerStartedTick: -999,
+      bouncerUntilTick: 0,
+      bouncerCooldownTick: 0,
+      bouncerStart: { ...spawn },
+      bouncerEnd: { ...spawn },
     });
   }
 
@@ -145,6 +165,19 @@ export class MatchSimulation {
 
   private stepPlayer(player: RuntimePlayer): void {
     player.lastProcessedInput = player.input.sequence;
+    if (this.tick < player.bouncerUntilTick) {
+      const duration = Math.max(1, player.bouncerUntilTick - player.bouncerStartedTick);
+      const progress = Math.min(1, (this.tick - player.bouncerStartedTick) / duration);
+      player.position.x =
+        player.bouncerStart.x + (player.bouncerEnd.x - player.bouncerStart.x) * progress;
+      player.position.z =
+        player.bouncerStart.z + (player.bouncerEnd.z - player.bouncerStart.z) * progress;
+      player.position.y = 1.75 + Math.sin(progress * Math.PI) * 11;
+      player.velocity = { x: 0, y: 0, z: 0 };
+      player.grounded = false;
+      player.action = 'launched';
+      return;
+    }
     const stunned = this.tick < player.stunnedUntilTick;
     if (stunned) {
       player.velocity.x = 0;
@@ -172,9 +205,16 @@ export class MatchSimulation {
         player.velocity.z += (inputZ * MOVE_SPEED - player.velocity.z) * blend;
       }
       if (inputLength > 0.1) player.facing = { x: inputX, z: inputZ };
-      if (player.input.jump && player.grounded) {
+      if (player.grounded) player.lastGroundedTick = this.tick;
+      if (player.input.jump) player.jumpBufferedUntil = this.tick + ticks(0.12);
+      if (
+        player.jumpBufferedUntil >= this.tick &&
+        this.tick - player.lastGroundedTick <= ticks(0.1)
+      ) {
         player.velocity.y = JUMP_SPEED;
         player.grounded = false;
+        player.jumpBufferedUntil = 0;
+        player.lastGroundedTick = -999;
       }
       if (player.input.punch && this.tick >= player.punchReadyTick && !dodging) {
         player.punchStartedTick = this.tick;
@@ -207,6 +247,27 @@ export class MatchSimulation {
       player.velocity.y = Math.max(0, player.velocity.y);
       player.grounded = true;
     } else if (player.position.y > 1.76) player.grounded = false;
+    this.checkBouncer(player);
+  }
+
+  private checkBouncer(player: RuntimePlayer): void {
+    if (!player.grounded || this.tick < player.bouncerCooldownTick) return;
+    for (const bouncer of this.bouncers) {
+      if (ringForTile(bouncer) < this.collapsedRings) continue;
+      const origin = tileToWorld(bouncer);
+      if (Math.hypot(player.position.x - origin.x, player.position.z - origin.z) > 1.45) continue;
+      const landing = tileToWorld(
+        safeBouncerLanding(bouncer, bouncer.direction, this.collapsedRings),
+      );
+      player.bouncerStart = { ...player.position };
+      player.bouncerEnd = { x: landing.x, y: 1.75, z: landing.z };
+      player.bouncerStartedTick = this.tick;
+      player.bouncerUntilTick = this.tick + ticks(1.15);
+      player.bouncerCooldownTick = player.bouncerUntilTick + ticks(BOUNCER_COOLDOWN_SECONDS);
+      player.velocity = { x: 0, y: 0, z: 0 };
+      player.action = 'launched';
+      return;
+    }
   }
 
   private resolveWalls(player: RuntimePlayer, previous: { x: number; y: number; z: number }): void {
@@ -360,6 +421,13 @@ export class MatchSimulation {
           punchReadyTick: _c,
           punchStartedTick: _d,
           hitThisPunch: _e,
+          lastGroundedTick: _f,
+          jumpBufferedUntil: _g,
+          bouncerStartedTick: _h,
+          bouncerUntilTick: _i,
+          bouncerCooldownTick: _j,
+          bouncerStart: _k,
+          bouncerEnd: _l,
           ...player
         }) => player,
       ),
