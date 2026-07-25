@@ -9,3 +9,4 @@
 - Added deterministic arena/hazard rules, fixed-tick round flow, automated tests, deployment manifests, and documentation.
 - Excluded test-only modules from production TypeScript builds for hosts that omit development dependencies.
 - Kept server compile-time HTTP declarations available during production-only Render installs.
+- Re-send saved reconnect tokens after each transport reconnect and restore the live room snapshot.

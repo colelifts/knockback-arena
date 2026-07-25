@@ -30,11 +30,15 @@ export class NetworkClient extends EventTarget {
       reconnectionDelay: 750,
       reconnectionDelayMax: 5000,
     });
+    this.socket.on('connect', () => {
+      this.emit('status', { connected: true });
+      const token = sessionStorage.getItem('ka-reconnect-token');
+      if (token) this.socket?.emit('session:reconnect', { token });
+    });
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => reject(new Error('MULTIPLAYER_WAKING')), 9000);
       this.socket!.once('connect', () => {
         clearTimeout(timer);
-        this.emit('status', { connected: true });
         resolve();
       });
       this.socket!.once('connect_error', () => {
@@ -62,11 +66,20 @@ export class NetworkClient extends EventTarget {
         this.snapshot = snapshot;
         this.emit('snapshot', snapshot);
       });
+      this.socket!.on(
+        'session:restored',
+        (data: { playerId: string; room: RoomView; snapshot: MatchSnapshot }) => {
+          this.playerId = data.playerId;
+          this.room = data.room;
+          this.snapshot = data.snapshot;
+          this.emit('room', data.room);
+          this.emit('snapshot', data.snapshot);
+          this.emit('status', { connected: true, restored: true });
+        },
+      );
       this.socket!.on('server:error', (error: unknown) => this.emit('error', error));
       this.socket!.on('queue:state', (state: unknown) => this.emit('queue', state));
       this.socket!.on('disconnect', () => this.emit('status', { connected: false }));
-      const token = sessionStorage.getItem('ka-reconnect-token');
-      if (token) this.socket!.emit('session:reconnect', { token });
     });
   }
   private emit(name: string, detail: unknown): void {
