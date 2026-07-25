@@ -4,6 +4,11 @@ import {
   ARENA_ROWS,
   METEOR_STUN_SECONDS,
   PUNCH_REACH,
+  PUNCH_ACTIVE_SECONDS,
+  PUNCH_COOLDOWN_SECONDS,
+  PUNCH_WINDUP_SECONDS,
+  DODGE_SECONDS,
+  DODGE_SPEED,
   SIMULATION_HZ,
   SeededRandom,
   activeTiles,
@@ -15,6 +20,7 @@ import {
   playerInputSchema,
   punchIsLegal,
   resolveRingOuts,
+  rotateAngleToward,
   safeBouncerLanding,
 } from './index.js';
 
@@ -67,14 +73,34 @@ describe('deterministic shared game rules', () => {
   it('keeps meteor stun exactly one second in simulation ticks', () => {
     expect(METEOR_STUN_SECONDS * SIMULATION_HZ).toBe(30);
   });
-  it('limits punches to a forward three-tile cone', () => {
-    expect(PUNCH_REACH).toBe(12);
-    expect(inPunchVolume({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 11.9, y: 1, z: 0 })).toBe(
+  it('limits punches to a forward 2.5-tile capsule/cone', () => {
+    expect(PUNCH_REACH).toBe(10);
+    expect(inPunchVolume({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 9.9, y: 1, z: 0 })).toBe(
       true,
+    );
+    expect(inPunchVolume({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 10.1, y: 1, z: 0 })).toBe(
+      false,
+    );
+    expect(inPunchVolume({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 7, y: 1, z: 1.3 })).toBe(
+      false,
     );
     expect(inPunchVolume({ x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, { x: -2, y: 1, z: 0 })).toBe(
       false,
     );
+  });
+  it('keeps punch timing and dodge travel inside the tuned windows', () => {
+    expect(PUNCH_WINDUP_SECONDS).toBeGreaterThanOrEqual(0.12);
+    expect(PUNCH_ACTIVE_SECONDS).toBeGreaterThanOrEqual(0.08);
+    expect(PUNCH_COOLDOWN_SECONDS).toBeGreaterThanOrEqual(0.48);
+    expect(PUNCH_COOLDOWN_SECONDS).toBeLessThanOrEqual(0.58);
+    expect(DODGE_SPEED * DODGE_SECONDS).toBeCloseTo(4.8, 5);
+  });
+  it('rotates through the shortest wrapped angle without overshoot', () => {
+    const from = Math.PI - 0.05;
+    const to = -Math.PI + 0.05;
+    const next = rotateAngleToward(from, to, 0.04);
+    expect(next).toBeCloseTo(from + 0.04, 6);
+    expect(rotateAngleToward(0, 0.02, 1)).toBeCloseTo(0.02, 6);
   });
   it('blocks punches through a wall', () => {
     const wall = { center: { x: 4, y: 1, z: 0 }, half: { x: 0.5, y: 2, z: 2 } };

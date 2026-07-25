@@ -11,6 +11,8 @@ const profiles = {
 export class BotController {
   private timer = 0;
   private decision: InputFrame = { moveX: 0, moveZ: 0, jump: false, dodge: false, punch: false };
+  private stuckTimer = 0;
+  private lastPosition = { x: Number.NaN, z: Number.NaN };
   constructor(private readonly difficulty: BotDifficulty) {}
   update(
     dt: number,
@@ -37,14 +39,24 @@ export class BotController {
     const edgeMargin = 6;
     if (Math.abs(here.x) > activeHalfWidth - edgeMargin) dx = -Math.sign(here.x);
     if (Math.abs(here.z) > activeHalfDepth - edgeMargin) dz = -Math.sign(here.z);
-    const length = Math.hypot(dx, dz) || 1;
+    const moved = Math.hypot(here.x - this.lastPosition.x, here.z - this.lastPosition.z);
+    const tryingToMove = Math.hypot(this.decision.moveX, this.decision.moveZ) > 0.4;
+    this.stuckTimer = tryingToMove && moved < 0.2 ? this.stuckTimer + profile.reaction : 0;
+    this.lastPosition = { x: here.x, z: here.z };
+    const recovering = this.stuckTimer > 0.85;
+    if (recovering) {
+      dx = -here.x + (Math.random() - 0.5) * 6;
+      dz = -here.z + (Math.random() - 0.5) * 6;
+      this.stuckTimer = 0;
+    }
+    const steeringLength = Math.hypot(dx, dz) || 1;
     const strafe = meteor ? 0 : (Math.random() - 0.5) * (distance < 14 ? 0.75 : 0.2);
     this.decision = {
-      moveX: dx / length + (-dz / length) * strafe,
-      moveZ: dz / length + (dx / length) * strafe,
-      jump: Math.random() < 0.08 && distance > 6,
-      dodge: distance < 13 && Math.random() < profile.dodge,
-      punch: distance < 11.5 && Math.random() < profile.aggression,
+      moveX: dx / steeringLength + (-dz / steeringLength) * strafe,
+      moveZ: dz / steeringLength + (dx / steeringLength) * strafe,
+      jump: recovering || (Math.random() < 0.08 && distance > 6),
+      dodge: recovering || (distance < 11 && Math.random() < profile.dodge),
+      punch: distance < 9.7 && Math.random() < profile.aggression,
     };
     return this.decision;
   }

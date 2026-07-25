@@ -7,7 +7,7 @@ Read the whole repository before making major architectural changes. Preserve ex
 - Keep the multiplayer server authoritative for movement, hits, hazards, ring-outs, scores, seeds, bouncers, and collapse timing.
 - Never add damage, health, or stamina without explicit approval.
 - Never add automatic camera lock-on or opponent-facing camera behavior.
-- Keep exactly one regular punch. Preserve its three-tile (12 metre) reach unless explicitly changed.
+- Keep exactly one regular punch. Its tuned reach is 2.5 tiles (10 metres).
 - Preserve the meteor's exactly one-second authoritative stun. Meteors stop players but never damage, bounce, or launch them.
 - Preserve the bouncer control lock and its safe far-edge landing behavior.
 - Preserve camera-relative movement: A is visual left and D is visual right.
