@@ -6,6 +6,8 @@ import {
   BASE_KNOCKBACK,
   BRACE_FRONT_KNOCKBACK_MULTIPLIER,
   BRACE_MOVE_MULTIPLIER,
+  CLASH_CONTROL_LOCK_SECONDS,
+  CLASH_RECOIL_SPEED,
   CLIENT_FIXED_STEP,
   CLIENT_SIMULATION_HZ,
   COLLAPSE_FIRST_SECONDS,
@@ -17,6 +19,7 @@ import {
   DODGE_SPEED,
   ELIMINATION_Y,
   HIT_CONTROL_LOCK_SECONDS,
+  HIT_REACTION_SECONDS,
   JUMP_SPEED,
   METEOR_STUN_SECONDS,
   MAX_FRAME_ACCUMULATOR_SECONDS,
@@ -77,6 +80,7 @@ interface Fighter {
   footstepReadyTick: number;
   counterReadyUntil: number;
   bracing: boolean;
+  hitReactionUntil: number;
 }
 const secondsToTicks = (seconds: number) => Math.round(seconds * CLIENT_SIMULATION_HZ);
 
@@ -149,6 +153,7 @@ export class LocalMatch {
       footstepReadyTick: 0,
       counterReadyUntil: 0,
       bracing: false,
+      hitReactionUntil: 0,
     };
   }
   setHumanInput(input: InputFrame, cameraForward: THREE.Vector3, cameraRight: THREE.Vector3): void {
@@ -213,8 +218,7 @@ export class LocalMatch {
     );
     this.stepFighter(this.human);
     this.stepFighter(this.bot);
-    this.resolvePunch(this.human, this.bot);
-    this.resolvePunch(this.bot, this.human);
+    this.resolveCombat();
     this.updateHazards();
     this.physics.step();
     this.checkBouncers(this.human);
@@ -325,12 +329,15 @@ export class LocalMatch {
       this.physics.castRay(ray, 2.05, true, undefined, undefined, undefined, fighter.body) !== null
     );
   }
-  private resolvePunch(attacker: Fighter, target: Fighter): void {
-    const age = this.tick - attacker.punchStart;
-    const active =
+  private punchIsActive(fighter: Fighter): boolean {
+    const age = this.tick - fighter.punchStart;
+    return (
       age >= secondsToTicks(PUNCH_WINDUP_SECONDS) &&
-      age < secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
-    if (!active || attacker.hit) return;
+      age < secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS) &&
+      !fighter.hit
+    );
+  }
+  private punchCanHit(attacker: Fighter, target: Fighter): boolean {
     const source = attacker.body.translation();
     const destination = target.body.translation();
     const forward = {
@@ -338,7 +345,7 @@ export class LocalMatch {
       y: 0,
       z: Math.cos(attacker.facingYaw),
     };
-    if (!inPunchVolume(source, forward, destination)) return;
+    if (!inPunchVolume(source, forward, destination)) return false;
     const direction = new THREE.Vector3(
       destination.x - source.x,
       destination.y - source.y,
@@ -356,10 +363,64 @@ export class LocalMatch {
       undefined,
       attacker.body,
     );
-    if (hit && hit.collider.parent() !== target.body) return;
+    return !hit || hit.collider.parent() === target.body;
+  }
+  private resolveCombat(): void {
+    if (
+      this.punchIsActive(this.human) &&
+      this.punchIsActive(this.bot) &&
+      this.punchCanHit(this.human, this.bot) &&
+      this.punchCanHit(this.bot, this.human)
+    ) {
+      const humanPosition = this.human.body.translation();
+      const botPosition = this.bot.body.translation();
+      const dx = botPosition.x - humanPosition.x;
+      const dz = botPosition.z - humanPosition.z;
+      const length = Math.hypot(dx, dz) || 1;
+      this.human.body.setLinvel(
+        { x: (-dx / length) * CLASH_RECOIL_SPEED, y: 1.2, z: (-dz / length) * CLASH_RECOIL_SPEED },
+        true,
+      );
+      this.bot.body.setLinvel(
+        { x: (dx / length) * CLASH_RECOIL_SPEED, y: 1.2, z: (dz / length) * CLASH_RECOIL_SPEED },
+        true,
+      );
+      const lockUntil = this.tick + secondsToTicks(CLASH_CONTROL_LOCK_SECONDS);
+      const reactionUntil = this.tick + secondsToTicks(HIT_REACTION_SECONDS);
+      for (const fighter of [this.human, this.bot]) {
+        fighter.controlLockedUntil = lockUntil;
+        fighter.hitReactionUntil = reactionUntil;
+        fighter.hit = true;
+        fighter.avatar.registerHit();
+      }
+      const midpoint = {
+        x: (humanPosition.x + botPosition.x) / 2,
+        y: (humanPosition.y + botPosition.y) / 2,
+        z: (humanPosition.z + botPosition.z) / 2,
+      };
+      void this.audio.play('hit', midpoint, humanPosition);
+      this.onEvent('clash', { position: midpoint });
+      return;
+    }
+    this.resolvePunch(this.human, this.bot);
+    this.resolvePunch(this.bot, this.human);
+  }
+  private resolvePunch(attacker: Fighter, target: Fighter): void {
+    const age = this.tick - attacker.punchStart;
+    const active =
+      age >= secondsToTicks(PUNCH_WINDUP_SECONDS) &&
+      age < secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
+    if (!active || attacker.hit || !this.punchCanHit(attacker, target)) return;
+    const destination = target.body.translation();
+    const forward = {
+      x: Math.sin(attacker.facingYaw),
+      y: 0,
+      z: Math.cos(attacker.facingYaw),
+    };
     if (this.tick < target.dodgeInvulnerableUntil) {
       target.counterReadyUntil = this.tick + secondsToTicks(PERFECT_DODGE_COUNTER_SECONDS);
       attacker.hit = true;
+      this.onEvent('perfectDodge', { position: destination });
       return;
     }
     const targetFacesAttacker =
@@ -389,6 +450,8 @@ export class LocalMatch {
       true,
     );
     target.controlLockedUntil = this.tick + secondsToTicks(HIT_CONTROL_LOCK_SECONDS);
+    target.hitReactionUntil = this.tick + secondsToTicks(HIT_REACTION_SECONDS);
+    target.avatar.registerHit();
     attacker.hit = true;
     attacker.counterReadyUntil = 0;
     void this.audio.play('hit', destination, this.human.body.translation());
@@ -487,6 +550,7 @@ export class LocalMatch {
       fighter.controlLockedUntil = 0;
       fighter.counterReadyUntil = 0;
       fighter.bracing = false;
+      fighter.hitReactionUntil = 0;
       fighter.stunUntil = 0;
       fighter.grounded = true;
     }
@@ -504,21 +568,28 @@ export class LocalMatch {
     const action =
       this.tick < fighter.stunUntil
         ? 'stunned'
-        : this.tick < fighter.bouncerUntil
-          ? 'launched'
-          : this.tick < fighter.dodgeUntil
-            ? 'dodge'
-            : this.tick - fighter.punchStart <
-                secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
-              ? 'punch'
-              : fighter.bracing
-                ? 'brace'
-                : !fighter.grounded
-                  ? 'jump'
-                  : speed > 0.8
-                    ? 'run'
-                    : 'idle';
+        : this.tick < fighter.hitReactionUntil
+          ? 'hit'
+          : this.tick < fighter.controlLockedUntil
+            ? 'launched'
+            : this.tick < fighter.bouncerUntil
+              ? 'launched'
+              : this.tick < fighter.dodgeUntil
+                ? 'dodge'
+                : this.tick - fighter.punchStart <
+                    secondsToTicks(
+                      PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS,
+                    )
+                  ? 'punch'
+                  : fighter.bracing
+                    ? 'brace'
+                    : !fighter.grounded
+                      ? 'jump'
+                      : speed > 0.8
+                        ? 'run'
+                        : 'idle';
     fighter.avatar.setAction(action);
+    fighter.avatar.setCounterReady(fighter.counterReadyUntil >= this.tick);
     if (action === 'run' && fighter.grounded && this.tick >= fighter.footstepReadyTick) {
       fighter.footstepReadyTick = this.tick + secondsToTicks(0.34);
       void this.audio.play('footstep', fighter.body.translation(), this.human.body.translation());
@@ -546,7 +617,9 @@ export class LocalMatch {
       grounded: this.human.grounded,
       action:
         this.tick < this.human.stunUntil || this.tick < this.human.controlLockedUntil
-          ? 'stunned'
+          ? this.tick < this.human.hitReactionUntil
+            ? 'hit'
+            : 'launched'
           : this.tick < this.human.dodgeUntil
             ? 'dodge'
             : this.tick - this.human.punchStart <

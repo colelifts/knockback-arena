@@ -18,8 +18,13 @@ export class CharacterAvatar extends THREE.Group {
   private readonly rightLeg = new THREE.Group();
   private readonly torso = new THREE.Group();
   private readonly stars = new THREE.Group();
+  private readonly attackGuide: THREE.Mesh;
+  private readonly braceShield: THREE.Mesh;
+  private readonly counterHalo: THREE.Mesh;
+  private readonly flashMaterials = new Set<THREE.MeshStandardMaterial>();
   private action: string = 'idle';
   private actionTime = 0;
+  private hitFlash = 0;
   private hairCurls: THREE.Mesh[] = [];
   constructor(
     readonly choice: CharacterChoice,
@@ -128,6 +133,41 @@ export class CharacterAvatar extends THREE.Group {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.08;
     this.modelRoot.add(ring);
+    this.attackGuide = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 9.2),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff06a,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    this.attackGuide.rotation.x = -Math.PI / 2;
+    this.attackGuide.position.set(0, 0.12, 5.25);
+    this.attackGuide.visible = false;
+    this.add(this.attackGuide);
+    this.braceShield = new THREE.Mesh(
+      new THREE.CircleGeometry(1.25, 20, Math.PI * 0.18, Math.PI * 0.64),
+      new THREE.MeshBasicMaterial({
+        color: 0x6ff7ff,
+        transparent: true,
+        opacity: 0.52,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    this.braceShield.position.set(0, 2.55, 0.95);
+    this.braceShield.visible = false;
+    this.add(this.braceShield);
+    this.counterHalo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.72, 0.1, 6, 20),
+      new THREE.MeshBasicMaterial({ color: 0x7dff70 }),
+    );
+    this.counterHalo.rotation.x = Math.PI / 2;
+    this.counterHalo.position.y = 5.35;
+    this.counterHalo.visible = false;
+    this.add(this.counterHalo);
     for (let index = 0; index < 6; index += 1) {
       const star = mesh(new THREE.OctahedronGeometry(0.15), material(0xffe85c, 0.28, 0.25));
       star.visible = false;
@@ -135,15 +175,35 @@ export class CharacterAvatar extends THREE.Group {
     }
     this.stars.position.y = 5.15;
     this.modelRoot.add(this.stars);
+    this.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial)
+        this.flashMaterials.add(child.material);
+    });
   }
   setAction(action: string): void {
     if (action !== this.action) {
       this.action = action;
       this.actionTime = 0;
+      if (action === 'hit') this.registerHit();
     }
+  }
+  registerHit(): void {
+    this.hitFlash = 0.24;
+  }
+  setCounterReady(ready: boolean): void {
+    this.counterHalo.visible = ready;
   }
   animate(dt: number, speed: number): void {
     this.actionTime += dt;
+    this.hitFlash = Math.max(0, this.hitFlash - dt);
+    const flash = this.hitFlash > 0 && Math.floor(this.hitFlash * 45) % 2 === 0;
+    for (const surface of this.flashMaterials) {
+      surface.emissive.setHex(flash ? 0xffffff : 0x000000);
+      surface.emissiveIntensity = flash ? 1.8 : 0;
+    }
+    this.attackGuide.visible = this.action === 'punch' && this.actionTime < 0.26;
+    this.braceShield.visible = this.action === 'brace';
+    if (this.counterHalo.visible) this.counterHalo.rotation.z += dt * 4;
     const run = this.action === 'run' ? Math.min(1, speed / 7) : 0;
     const cycle = Math.sin(this.actionTime * 11);
     this.leftArm.rotation.x = cycle * run * 0.72;
@@ -151,6 +211,7 @@ export class CharacterAvatar extends THREE.Group {
     this.leftLeg.rotation.x = -cycle * run * 0.58;
     this.rightLeg.rotation.x = cycle * run * 0.58;
     this.torso.position.y = 2.7 + Math.abs(cycle) * run * 0.06;
+    this.torso.rotation.set(0, 0, 0);
     if (this.action === 'punch') {
       const swing = Math.sin(Math.min(1, this.actionTime / 0.22) * Math.PI);
       this.rightArm.rotation.x = -1.7 * swing;
@@ -175,13 +236,23 @@ export class CharacterAvatar extends THREE.Group {
         THREE.MathUtils.lerp(this.scale.z, 1, blend),
       );
     }
+    if (this.action === 'hit') {
+      this.scale.set(1.22, 0.86, 1.08);
+      this.torso.rotation.x = 0.38;
+      this.leftArm.rotation.x = 1.25;
+      this.rightArm.rotation.x = 1.25;
+      this.leftArm.rotation.z = -0.8;
+      this.rightArm.rotation.z = 0.8;
+      this.leftLeg.rotation.x = -0.45;
+      this.rightLeg.rotation.x = 0.55;
+    }
     if (this.action === 'jump' || this.action === 'launched') {
       this.leftLeg.rotation.x = -0.35;
       this.rightLeg.rotation.x = 0.45;
       this.leftArm.rotation.z = -0.3;
       this.rightArm.rotation.z = 0.3;
     }
-    const stunned = this.action === 'stunned';
+    const stunned = this.action === 'stunned' || this.action === 'hit';
     this.stars.children.forEach((star, index) => {
       star.visible = stunned;
       star.position.set(

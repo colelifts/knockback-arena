@@ -27,6 +27,15 @@ describe('shared movement controller', () => {
     const reversing = stepHorizontalVelocity({ x: MOVE_SPEED, z: 0 }, -1, 0, true, 0.1);
     expect(reversing.x).toBeLessThan(braking.x);
   });
+  it('reaches full ground speed and stops within four 60 Hz frames', () => {
+    let velocity = { x: 0, z: 0 };
+    for (let frame = 0; frame < 4; frame += 1)
+      velocity = stepHorizontalVelocity(velocity, 0, 1, true, 1 / 60);
+    expect(velocity.z).toBeCloseTo(MOVE_SPEED, 5);
+    for (let frame = 0; frame < 3; frame += 1)
+      velocity = stepHorizontalVelocity(velocity, 0, 0, true, 1 / 60);
+    expect(velocity.z).toBe(0);
+  });
   it('keeps movement and simulation facing aligned in all cardinal directions', () => {
     for (const direction of [
       { x: 0, z: 1 },

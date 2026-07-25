@@ -169,6 +169,10 @@ export class GameApp {
     }
     if (event === 'collapse') this.ui.notify('The outer ring has fallen!');
     if (event === 'go') this.ui.notify('GO!');
+    if (event === 'hit') this.ui.showCombatCallout('HIT!', 'hit');
+    if (event === 'clash') this.ui.showCombatCallout('CLASH!', 'clash');
+    if (event === 'perfectDodge')
+      this.ui.showCombatCallout('PERFECT DODGE — COUNTER READY', 'counter');
   }
   private errorMessage(code: string): string {
     return (

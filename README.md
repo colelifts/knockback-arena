@@ -38,6 +38,10 @@ Knockback Arena is a third-person 3D party fighter for the browser. Two stylized
 
 The camera never automatically rotates toward the opponent and there is no lock-on key.
 
+Combat readability is color-coded: yellow shows the committed punch lane, blue shows an active
+front-facing brace, and a green halo shows that a perfect-dodge counter is ready. Simultaneous
+punches clash and recoil instead of applying two full knockbacks.
+
 ## Architecture
 
 ```mermaid

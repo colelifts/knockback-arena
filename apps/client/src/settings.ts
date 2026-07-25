@@ -16,13 +16,13 @@ export const defaultSettings: GameSettings = {
   musicVolume: 0.45,
   mouseSensitivity: 0.65,
   invertY: false,
-  quality: 'high',
-  shadows: true,
+  quality: 'medium',
+  shadows: false,
   cameraShake: 0.65,
   reducedMotion: false,
   showFps: false,
 };
-const storageKey = 'knockback-arena-settings-v1';
+const storageKey = 'knockback-arena-settings-v2';
 export const loadSettings = (): GameSettings => {
   try {
     return {

@@ -8,6 +8,9 @@
 - Added committed punch recovery, momentum and flank bonuses, frontal bracing, and perfect-dodge counter bonuses.
 - Raised authoritative snapshots to 30 Hz and reduced remote interpolation delay to 65 ms.
 - Updated Bot Mode to use dodges and bracing while preserving one-punch, no-health combat.
+- Added simultaneous-punch clashes, full-length punch telegraphs, hit flashes/reaction poses, brace shields, counter halos, and combat callouts.
+- Reduced render cost by disabling shadows/antialiasing, lowering pixel density, removing decorative model loads and debris, and cutting idle arena draw calls.
+- Replaced 285 fixed tile bodies with standalone colliders and stopped uploading unchanged tile transforms every frame.
 
 ## 1.1.0 - Snappy gameplay, audio, and sky-arena polish
 

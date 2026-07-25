@@ -20,6 +20,8 @@ export class GameUI {
   readonly hud: HTMLElement;
   private screen: HTMLElement;
   private toast: HTMLElement;
+  private combatCallout: HTMLElement;
+  private combatCalloutTimer = 0;
   character: CharacterChoice = 'boy';
   difficulty: BotDifficulty = 'normal';
   constructor(
@@ -34,7 +36,9 @@ export class GameUI {
     this.hud.className = 'hud hidden';
     this.toast = document.createElement('div');
     this.toast.className = 'toast hidden';
-    this.root.append(this.screen, this.hud, this.toast);
+    this.combatCallout = document.createElement('div');
+    this.combatCallout.className = 'combat-callout hidden';
+    this.root.append(this.screen, this.hud, this.toast, this.combatCallout);
     document.body.append(this.root);
     this.showMain();
   }
@@ -184,6 +188,16 @@ export class GameUI {
     this.toast.textContent = message;
     this.toast.classList.remove('hidden');
     window.setTimeout(() => this.toast.classList.add('hidden'), 3200);
+  }
+  showCombatCallout(message: string, tone: 'hit' | 'clash' | 'counter'): void {
+    window.clearTimeout(this.combatCalloutTimer);
+    this.combatCallout.textContent = message;
+    this.combatCallout.dataset.tone = tone;
+    this.combatCallout.classList.remove('hidden');
+    this.combatCalloutTimer = window.setTimeout(
+      () => this.combatCallout.classList.add('hidden'),
+      tone === 'counter' ? 700 : 360,
+    );
   }
   private setText(id: string, value: string | number): void {
     const element = this.hud.querySelector(`#${id}`);

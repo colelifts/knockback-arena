@@ -592,6 +592,40 @@ kbd {
   box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4);
   font-size: 13px;
 }
+.combat-callout {
+  position: fixed;
+  top: 34%;
+  left: 50%;
+  z-index: 18;
+  transform: translate(-50%, -50%) scale(1);
+  color: #fff36a;
+  font: italic 900 clamp(32px, 6vw, 72px) 'Barlow Condensed';
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  text-shadow:
+    0 5px 0 #702b18,
+    0 0 24px #ff8b28;
+  animation: combat-callout 0.22s ease-out;
+}
+.combat-callout[data-tone='clash'] {
+  color: #8ff8ff;
+  text-shadow:
+    0 5px 0 #163c72,
+    0 0 28px #42dfff;
+}
+.combat-callout[data-tone='counter'] {
+  color: #9aff73;
+  font-size: clamp(24px, 4vw, 52px);
+  text-shadow:
+    0 5px 0 #235d2b,
+    0 0 28px #65ff84;
+}
+@keyframes combat-callout {
+  from {
+    transform: translate(-50%, -50%) scale(1.45);
+    opacity: 0;
+  }
+}
 .result-burst {
   color: #ffe463;
   font-size: 70px;

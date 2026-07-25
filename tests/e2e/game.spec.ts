@@ -27,6 +27,10 @@ test('main menu loads and bot match is playable', async ({ page }) => {
   const debug = await page.getByTestId('debug-overlay').textContent();
   expect(debug).toMatch(/draws \d+ \| triangles \d+/);
   expect(debug).toMatch(/physics \d+\.\d+ ms/);
+  const performanceState = await page.evaluate(() => window.__KA_TEST__?.state().debug);
+  expect(performanceState?.bodies).toBeLessThan(40);
+  expect(performanceState?.draws).toBeLessThan(80);
+  expect(performanceState?.frameP95Ms).toBeLessThan(40);
   expect(failedAssets).toEqual([]);
   await page.evaluate(() => window.__KA_TEST__?.punch());
   await page.keyboard.press('Escape');

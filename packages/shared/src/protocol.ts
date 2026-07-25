@@ -18,6 +18,7 @@ export interface PlayerSnapshot {
     | 'punch'
     | 'dodge'
     | 'brace'
+    | 'hit'
     | 'stunned'
     | 'launched'
     | 'fall'
@@ -26,6 +27,7 @@ export interface PlayerSnapshot {
   score: number;
   lastProcessedInput: number;
   stunnedUntilTick: number;
+  counterReady: boolean;
 }
 export interface MeteorState {
   id: number;

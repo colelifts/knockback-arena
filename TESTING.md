@@ -30,6 +30,7 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 - [ ] Cap at 30 FPS and verify responsive movement, landing, wall collision, and no seam falls.
 - [ ] Test at 60 FPS.
 - [ ] Test at 120 or 144 FPS; speed and jump height must match lower rates.
+- [ ] Verify the automated Bot Mode sample stays below 40 physics bodies, 80 draw calls, and a 40 ms p95 frame time.
 - [ ] Append `?debug=1`; verify physics stays within budget and draw/body counts do not grow between rematches.
 - [ ] Verify the character always spawns above the map.
 - [ ] Push into every test wall from all directions; no corner penetration.
@@ -42,6 +43,8 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 - [ ] Verify a clean stationary punch moves its target exactly 2.5 tiles before control returns.
 - [ ] Verify E braces against frontal knockback, slows movement, and does not protect the flank.
 - [ ] Perfect-dodge an active punch and verify the next counter has stronger knockback.
+- [ ] Punch simultaneously from opposing directions and verify both players visibly clash without a full launch.
+- [ ] Confirm every clean hit produces a flash, reaction pose, impact burst, and HIT callout.
 - [ ] Verify there is no health, damage, stamina, heavy attack, grab, or special UI.
 
 ### Hazards and round flow

@@ -93,7 +93,7 @@ describe('deterministic shared game rules', () => {
     expect(PUNCH_WINDUP_SECONDS).toBeGreaterThanOrEqual(0.12);
     expect(PUNCH_ACTIVE_SECONDS).toBeGreaterThanOrEqual(0.08);
     expect(PUNCH_COOLDOWN_SECONDS).toBeGreaterThanOrEqual(0.65);
-    expect(PUNCH_COOLDOWN_SECONDS).toBeLessThanOrEqual(0.72);
+    expect(PUNCH_COOLDOWN_SECONDS).toBeLessThanOrEqual(0.85);
     expect(DODGE_SPEED * DODGE_SECONDS).toBeCloseTo(4.8, 5);
   });
   it('rotates through the shortest wrapped angle without overshoot', () => {

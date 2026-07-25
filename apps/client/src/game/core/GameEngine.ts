@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
   CLIENT_FIXED_STEP,
   BRACE_MOVE_MULTIPLIER,
@@ -67,6 +66,8 @@ export class GameEngine {
   private debugElapsed = 0;
   private debugFps = 0;
   private physicsMs = 0;
+  private readonly frameTimes: number[] = [];
+  private longFrameCount = 0;
   private readonly effects: Array<{
     object: THREE.Object3D;
     age: number;
@@ -89,17 +90,11 @@ export class GameEngine {
     }
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: settings.quality !== 'low',
+      antialias: false,
       powerPreference: 'high-performance',
     });
-    this.renderer.setPixelRatio(
-      Math.min(
-        devicePixelRatio,
-        settings.quality === 'high' ? 1.75 : settings.quality === 'medium' ? 1.35 : 1,
-      ),
-    );
-    this.renderer.shadowMap.enabled = settings.shadows;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, settings.quality === 'high' ? 1.15 : 1));
+    this.renderer.shadowMap.enabled = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
@@ -141,22 +136,14 @@ export class GameEngine {
     this.scene.add(ambient);
     const sun = new THREE.DirectionalLight(0xfff0c2, 3.4);
     sun.position.set(-28, 44, 20);
-    sun.castShadow = this.settings.shadows;
-    sun.shadow.mapSize.set(
-      this.settings.quality === 'high' ? 2048 : 1024,
-      this.settings.quality === 'high' ? 2048 : 1024,
-    );
-    sun.shadow.camera.left = -50;
-    sun.shadow.camera.right = 50;
-    sun.shadow.camera.top = 45;
-    sun.shadow.camera.bottom = -45;
+    sun.castShadow = false;
     this.scene.add(sun);
     const accent = new THREE.PointLight(0xffa8dc, 24, 70, 2);
     accent.position.set(12, 18, 8);
     this.scene.add(accent);
     const starsGeometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(900 * 3);
-    for (let i = 0; i < 900; i += 1) {
+    const positions = new Float32Array(180 * 3);
+    for (let i = 0; i < 180; i += 1) {
       const radius = 90 + Math.random() * 120;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
@@ -178,10 +165,10 @@ export class GameEngine {
       opacity: 0.72,
       depthWrite: false,
     });
-    const clouds = new THREE.InstancedMesh(cloudGeometry, cloudMaterial, 42);
+    const clouds = new THREE.InstancedMesh(cloudGeometry, cloudMaterial, 14);
     const transform = new THREE.Object3D();
-    for (let index = 0; index < 42; index += 1) {
-      const angle = (index / 42) * Math.PI * 2;
+    for (let index = 0; index < 14; index += 1) {
+      const angle = (index / 14) * Math.PI * 2;
       const radius = 55 + (index % 5) * 12;
       transform.position.set(
         Math.cos(angle) * radius,
@@ -193,45 +180,11 @@ export class GameEngine {
       clouds.setMatrixAt(index, transform.matrix);
     }
     this.scene.add(clouds);
-    void this.loadSkyDecorations();
-  }
-  private async loadSkyDecorations(): Promise<void> {
-    const loader = new GLTFLoader();
-    try {
-      const [islandAsset, treeAsset, flowerAsset] = await Promise.all([
-        loader.loadAsync('/assets/models/kenney-nature/island-cliff-block.glb'),
-        loader.loadAsync('/assets/models/kenney-nature/tree-small.glb'),
-        loader.loadAsync('/assets/models/kenney-nature/flower-coral.glb'),
-      ]);
-      const locations = [
-        [-52, -38],
-        [55, -31],
-        [-58, 34],
-        [54, 39],
-        [0, -61],
-        [4, 64],
-      ] as const;
-      locations.forEach(([x, z], index) => {
-        const island = islandAsset.scene.clone(true);
-        island.position.set(x, -7 - (index % 2) * 3, z);
-        island.scale.setScalar(5 + (index % 3));
-        this.scene.add(island);
-        const tree = treeAsset.scene.clone(true);
-        tree.position.set(x, island.position.y + 6.5, z);
-        tree.scale.setScalar(2.2 + (index % 2) * 0.5);
-        tree.rotation.y = index * 1.7;
-        this.scene.add(tree);
-        const flower = flowerAsset.scene.clone(true);
-        flower.position.set(x + 2.4, island.position.y + 6.2, z - 1.4);
-        flower.scale.setScalar(1.8);
-        this.scene.add(flower);
-      });
-    } catch (error) {
-      console.warn('Optional sky decorations could not be loaded.', error);
-    }
   }
   startBot(character: CharacterChoice, difficulty: BotDifficulty): void {
     this.reset();
+    this.frameTimes.length = 0;
+    this.longFrameCount = 0;
     this.world = new ArenaWorld(this.scene, this.physics, 0x4b4e4f43);
     this.localMatch = new LocalMatch(
       this.physics,
@@ -254,6 +207,8 @@ export class GameEngine {
   }
   startOnline(seed: number, localId: string): void {
     this.reset();
+    this.frameTimes.length = 0;
+    this.longFrameCount = 0;
     this.world = new ArenaWorld(this.scene, this.physics, seed);
     this.localId = localId;
     this.running = true;
@@ -264,6 +219,36 @@ export class GameEngine {
     if (!this.frameHandle) this.frameHandle = requestAnimationFrame((time) => this.frame(time));
   }
   applySnapshot(snapshot: MatchSnapshot): void {
+    const previous = this.onlineSnapshot;
+    if (previous) {
+      const newlyHit = snapshot.players.filter(
+        (player) =>
+          player.action === 'hit' &&
+          previous.players.find((candidate) => candidate.id === player.id)?.action !== 'hit',
+      );
+      if (newlyHit.length === 2) {
+        const position = {
+          x: (newlyHit[0]!.position.x + newlyHit[1]!.position.x) / 2,
+          y: (newlyHit[0]!.position.y + newlyHit[1]!.position.y) / 2,
+          z: (newlyHit[0]!.position.z + newlyHit[1]!.position.z) / 2,
+        };
+        this.spawnCombatEffect('clash', { position });
+        this.callbacks.event('clash', { position });
+      } else if (newlyHit[0]) {
+        this.spawnCombatEffect('hit', { position: newlyHit[0].position });
+        this.callbacks.event('hit', { position: newlyHit[0].position });
+      }
+      for (const player of snapshot.players) {
+        const wasReady = previous.players.find(
+          (candidate) => candidate.id === player.id,
+        )?.counterReady;
+        if (player.counterReady && !wasReady) {
+          this.spawnCombatEffect('perfectDodge', { position: player.position });
+          if (player.id === this.localId)
+            this.callbacks.event('perfectDodge', { position: player.position });
+        }
+      }
+    }
     this.snapshotBuffer.push(snapshot);
     if (this.snapshotBuffer.length > 12) this.snapshotBuffer.shift();
     this.onlineSnapshot = snapshot;
@@ -289,6 +274,10 @@ export class GameEngine {
   private frame(time: number): void {
     this.frameHandle = 0;
     const dt = Math.min(0.05, (time - this.lastTime) / 1000);
+    const frameMs = dt * 1000;
+    this.frameTimes.push(frameMs);
+    if (this.frameTimes.length > 600) this.frameTimes.shift();
+    if (frameMs > 34) this.longFrameCount += 1;
     this.lastTime = time;
     if (this.running && !this.paused) {
       if (this.localMatch) this.updateLocal(dt);
@@ -407,6 +396,7 @@ export class GameEngine {
         VISUAL_ROTATION_SPEED * dt,
       );
       avatar.setAction(player.action);
+      avatar.setCounterReady(player.counterReady === true);
       avatar.animate(dt, Math.hypot(player.velocity.x, player.velocity.z));
     }
     const local =
@@ -468,6 +458,11 @@ export class GameEngine {
     const position =
       fighter?.body.translation() ??
       (this.predictionReady ? this.predictedPosition : onlinePlayer?.position);
+    const sortedFrameTimes = [...this.frameTimes].sort((a, b) => a - b);
+    const frameP95Ms =
+      sortedFrameTimes[
+        Math.min(sortedFrameTimes.length - 1, Math.floor(sortedFrameTimes.length * 0.95))
+      ] ?? 0;
     return {
       running: this.running,
       phase: this.localMatch?.phase ?? this.onlineSnapshot?.phase ?? 'menu',
@@ -482,7 +477,11 @@ export class GameEngine {
       debug: {
         draws: this.renderer.info.render.calls,
         triangles: this.renderer.info.render.triangles,
+        bodies: this.physics.bodies.len(),
         predictionError: this.predictionError,
+        fps: this.debugFps,
+        frameP95Ms,
+        longFrames: this.longFrameCount,
         ...(this.localMatch?.debugState ?? {}),
       },
       players:
@@ -519,6 +518,11 @@ export class GameEngine {
       `FPS ${this.debugFps.toFixed(0)} | frame ${(dt * 1000).toFixed(1)} ms | physics ${this.physicsMs.toFixed(2)} ms`,
       `ping ${network.ping} ms | missing snapshots ${network.missingSnapshots} | payload ${network.snapshotBytes} B`,
       `prediction ${this.predictionError.toFixed(3)} m | bodies ${bodies} | draws ${render.calls} | triangles ${render.triangles}`,
+      `p95 frame ${(
+        [...this.frameTimes].sort((a, b) => a - b)[
+          Math.min(this.frameTimes.length - 1, Math.floor(this.frameTimes.length * 0.95))
+        ] ?? 0
+      ).toFixed(1)} ms | long frames ${this.longFrameCount}`,
       `speed ${(local?.speed ?? Math.hypot(online?.velocity.x ?? 0, online?.velocity.z ?? 0)).toFixed(2)} | grounded ${local?.grounded ?? online?.grounded ?? false} | action ${local?.action ?? online?.action ?? 'idle'}`,
     ].join('\n');
   }
@@ -589,15 +593,25 @@ export class GameEngine {
       this.scene.add(arc);
       this.effects.push({ object: arc, age: 0, duration: 0.18, kind: 'arc' });
     }
-    if (event === 'hit') {
+    if (event === 'hit' || event === 'clash') {
       const burst = new THREE.Group();
       burst.position.set(position.x, position.y + 0.35, position.z);
-      for (let index = 0; index < 9; index += 1) {
+      const sparkCount = event === 'clash' ? 14 : 10;
+      for (let index = 0; index < sparkCount; index += 1) {
         const spark = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.11),
-          new THREE.MeshBasicMaterial({ color: index % 2 ? 0xffef70 : 0xffffff }),
+          new THREE.OctahedronGeometry(event === 'clash' ? 0.18 : 0.14),
+          new THREE.MeshBasicMaterial({
+            color:
+              event === 'clash'
+                ? index % 2
+                  ? 0x6ff7ff
+                  : 0xffffff
+                : index % 2
+                  ? 0xffef70
+                  : 0xffffff,
+          }),
         );
-        const angle = (index / 9) * Math.PI * 2;
+        const angle = (index / sparkCount) * Math.PI * 2;
         spark.position.set(
           Math.cos(angle) * 0.6,
           Math.sin(index * 2.1) * 0.35,
@@ -606,8 +620,13 @@ export class GameEngine {
         burst.add(spark);
       }
       this.scene.add(burst);
-      this.effects.push({ object: burst, age: 0, duration: 0.28, kind: 'hit' });
-      this.cameraRig.addShake(0.42);
+      this.effects.push({
+        object: burst,
+        age: 0,
+        duration: event === 'clash' ? 0.38 : 0.32,
+        kind: 'hit',
+      });
+      this.cameraRig.addShake(event === 'clash' ? 0.58 : 0.46);
     }
     if (event === 'dodge') {
       const ring = new THREE.Mesh(
@@ -623,6 +642,21 @@ export class GameEngine {
       ring.rotation.x = -Math.PI / 2;
       this.scene.add(ring);
       this.effects.push({ object: ring, age: 0, duration: 0.22, kind: 'dodge' });
+    }
+    if (event === 'perfectDodge') {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.6, 1.5, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0x7dff70,
+          transparent: true,
+          opacity: 0.8,
+          side: THREE.DoubleSide,
+        }),
+      );
+      ring.position.set(position.x, position.y + 0.2, position.z);
+      ring.rotation.x = -Math.PI / 2;
+      this.scene.add(ring);
+      this.effects.push({ object: ring, age: 0, duration: 0.38, kind: 'dodge' });
     }
   }
   private updateEffects(dt: number): void {
