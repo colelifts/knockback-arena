@@ -86,6 +86,13 @@ export const createGameServer = (overrides: Partial<ServerConfig> = {}): GameSer
     socket.emit('server:error', { code, message: code.replaceAll('_', ' ').toLowerCase() });
 
   io.on('connection', (socket) => {
+    socket.on('latency:ping', (_sentAt: number, acknowledge?: () => void) => acknowledge?.());
+    if (config.NODE_ENV !== 'production')
+      socket.on('test:ring-out', () => {
+        const session = sessions.get(socket.id);
+        const room = session ? rooms.rooms.get(session.roomCode) : undefined;
+        if (session && room) room.simulation.testRingOut(session.playerId);
+      });
     socket.emit('server:hello', { version: GAME_VERSION, tickRate: config.GAME_TICK_RATE });
     socket.on('room:create', (payload) => {
       if (!actionLimiter.allow(socket.id)) return reject(socket, 'RATE_LIMITED');

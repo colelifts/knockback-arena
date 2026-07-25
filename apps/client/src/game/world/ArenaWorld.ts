@@ -14,7 +14,11 @@ import {
 } from '@knockback/shared';
 
 interface TileRuntime {
-  mesh: THREE.Mesh;
+  instance: number;
+  x: number;
+  z: number;
+  y: number;
+  rotationX: number;
   body: RAPIER.RigidBody;
   collider: RAPIER.Collider | null;
   ring: number;
@@ -44,6 +48,8 @@ export class ArenaWorld {
   private readonly tiles = new Map<string, TileRuntime>();
   private readonly obstacleRuntimes: ObstacleRuntime[] = [];
   private readonly meteorVisuals = new Map<number, THREE.Group>();
+  private readonly tileTransform = new THREE.Object3D();
+  private tileMesh: THREE.InstancedMesh | null = null;
   private warningRing: number | null = null;
   constructor(
     private readonly scene: THREE.Scene,
@@ -58,22 +64,25 @@ export class ArenaWorld {
   }
   private createArena(): void {
     const tileGeometry = new THREE.BoxGeometry(TILE_SIZE - 0.05, 0.72, TILE_SIZE - 0.05);
+    const tileMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.72,
+      metalness: 0.04,
+    });
+    this.tileMesh = new THREE.InstancedMesh(tileGeometry, tileMaterial, ARENA_COLUMNS * ARENA_ROWS);
+    this.tileMesh.receiveShadow = true;
+    this.tileMesh.frustumCulled = false;
+    this.group.add(this.tileMesh);
+    let instance = 0;
     for (let row = 0; row < ARENA_ROWS; row += 1)
       for (let col = 0; col < ARENA_COLUMNS; col += 1) {
         const ring = ringForTile({ col, row });
         const point = tileToWorld({ col, row });
-        const surface = new THREE.MeshStandardMaterial({
-          color: ring % 2 === 0 ? 0x182955 : 0x14234a,
-          emissive: 0x071333,
-          emissiveIntensity: 0.75,
-          roughness: 0.55,
-          metalness: 0.45,
-        });
-        const tile = new THREE.Mesh(tileGeometry, surface);
-        tile.position.set(point.x, 0, point.z);
-        tile.castShadow = false;
-        tile.receiveShadow = true;
-        this.group.add(tile);
+        this.tileTransform.position.set(point.x, 0, point.z);
+        this.tileTransform.rotation.set(0, 0, 0);
+        this.tileTransform.updateMatrix();
+        this.tileMesh.setMatrixAt(instance, this.tileTransform.matrix);
+        this.tileMesh.setColorAt(instance, new THREE.Color(ring % 2 === 0 ? 0x79c9f4 : 0x9d8eea));
         const body = this.physics.createRigidBody(
           RAPIER.RigidBodyDesc.fixed().setTranslation(point.x, 0, point.z),
         );
@@ -86,14 +95,21 @@ export class ArenaWorld {
           body,
         );
         this.tiles.set(tileKey({ col, row }), {
-          mesh: tile,
+          instance,
+          x: point.x,
+          z: point.z,
+          y: 0,
+          rotationX: 0,
           body,
           collider,
           ring,
           falling: false,
           velocity: 0,
         });
+        instance += 1;
       }
+    this.tileMesh.instanceMatrix.needsUpdate = true;
+    if (this.tileMesh.instanceColor) this.tileMesh.instanceColor.needsUpdate = true;
     const edge = new THREE.Mesh(
       new THREE.BoxGeometry(ARENA_COLUMNS * TILE_SIZE + 1.2, 0.12, ARENA_ROWS * TILE_SIZE + 1.2),
       new THREE.MeshBasicMaterial({
@@ -106,15 +122,15 @@ export class ArenaWorld {
     edge.position.y = -0.43;
     this.group.add(edge);
   }
-  private addObstacle(position: THREE.Vector3, size: THREE.Vector3, color = 0x334b8c): void {
+  private addObstacle(position: THREE.Vector3, size: THREE.Vector3, color = 0x6178c9): void {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(size.x, size.y, size.z),
       new THREE.MeshStandardMaterial({
         color,
-        emissive: 0x071433,
-        emissiveIntensity: 0.5,
-        roughness: 0.48,
-        metalness: 0.5,
+        emissive: 0x243473,
+        emissiveIntensity: 0.16,
+        roughness: 0.7,
+        metalness: 0.04,
       }),
     );
     mesh.position.copy(position);
@@ -140,12 +156,12 @@ export class ArenaWorld {
     });
     const trim = new THREE.LineSegments(
       new THREE.EdgesGeometry(mesh.geometry),
-      new THREE.LineBasicMaterial({ color: 0x59dfff, transparent: true, opacity: 0.48 }),
+      new THREE.LineBasicMaterial({ color: 0xe8faff, transparent: true, opacity: 0.56 }),
     );
     mesh.add(trim);
   }
   private createObstacles(): void {
-    this.addObstacle(new THREE.Vector3(0, 2, 0), new THREE.Vector3(7.6, 4, 7.6), 0x3a327b);
+    this.addObstacle(new THREE.Vector3(0, 2, 0), new THREE.Vector3(7.6, 4, 7.6), 0x735fc6);
     this.addObstacle(new THREE.Vector3(-18, 1.5, -10), new THREE.Vector3(8, 3, 2));
     this.addObstacle(new THREE.Vector3(18, 1.5, 10), new THREE.Vector3(8, 3, 2));
     this.addObstacle(new THREE.Vector3(-10, 1, 14), new THREE.Vector3(4, 2, 6));
@@ -156,15 +172,15 @@ export class ArenaWorld {
       [-25, -16],
       [25, 16],
     ] as const)
-      this.addObstacle(new THREE.Vector3(x, 2.7, z), new THREE.Vector3(2.2, 5.4, 2.2), 0x2d5680);
+      this.addObstacle(new THREE.Vector3(x, 2.7, z), new THREE.Vector3(2.2, 5.4, 2.2), 0x51a6ba);
     const tower = new THREE.Mesh(
       new THREE.CylinderGeometry(4.2, 5.2, 4.2, 8),
       new THREE.MeshStandardMaterial({
-        color: 0x4b3d93,
-        emissive: 0x160e4b,
-        emissiveIntensity: 0.8,
-        metalness: 0.55,
-        roughness: 0.4,
+        color: 0x9a79d7,
+        emissive: 0x432b85,
+        emissiveIntensity: 0.18,
+        metalness: 0.04,
+        roughness: 0.68,
       }),
     );
     tower.position.y = 6.1;
@@ -215,9 +231,9 @@ export class ArenaWorld {
   private createFragments(): void {
     const geometry = new THREE.IcosahedronGeometry(1, 0);
     const material = new THREE.MeshStandardMaterial({
-      color: 0x13214b,
-      emissive: 0x06102d,
-      emissiveIntensity: 0.5,
+      color: 0x6a70a8,
+      emissive: 0x29306d,
+      emissiveIntensity: 0.12,
     });
     for (let index = 0; index < 32; index += 1) {
       const fragment = new THREE.Mesh(geometry, material);
@@ -236,7 +252,6 @@ export class ArenaWorld {
   setCollapse(collapsedRings: number, warningRing: number | null): void {
     this.warningRing = warningRing;
     for (const tile of this.tiles.values()) {
-      const surface = tile.mesh.material as THREE.MeshStandardMaterial;
       if (tile.ring < collapsedRings && !tile.falling) {
         if (tile.collider) this.physics.removeCollider(tile.collider, true);
         tile.collider = null;
@@ -244,8 +259,8 @@ export class ArenaWorld {
         tile.velocity = -1.5;
       }
       if (tile.ring >= collapsedRings && tile.falling) {
-        tile.mesh.position.y = 0;
-        tile.mesh.rotation.set(0, 0, 0);
+        tile.y = 0;
+        tile.rotationX = 0;
         tile.velocity = 0;
         tile.falling = false;
         tile.collider = this.physics.createCollider(
@@ -259,11 +274,14 @@ export class ArenaWorld {
       }
       if (!tile.falling) {
         const warning = tile.ring === warningRing;
-        surface.color.setHex(warning ? 0xff493d : tile.ring % 2 === 0 ? 0x182955 : 0x14234a);
-        surface.emissive.setHex(warning ? 0xff2b13 : 0x071333);
-        surface.emissiveIntensity = warning ? 1.5 : 0.75;
+        this.tileMesh?.setColorAt(
+          tile.instance,
+          new THREE.Color(warning ? 0xff756d : tile.ring % 2 === 0 ? 0x79c9f4 : 0x9d8eea),
+        );
       }
+      this.updateTileInstance(tile);
     }
+    if (this.tileMesh?.instanceColor) this.tileMesh.instanceColor.needsUpdate = true;
     for (const bouncer of this.bouncers)
       if (bouncer.ring < collapsedRings) bouncer.group.visible = false;
     for (const bouncer of this.bouncers)
@@ -295,9 +313,11 @@ export class ArenaWorld {
     for (const tile of this.tiles.values())
       if (tile.falling) {
         tile.velocity -= 16 * dt;
-        tile.mesh.position.y += tile.velocity * dt;
-        tile.mesh.rotation.x += dt * 0.25;
+        tile.y += tile.velocity * dt;
+        tile.rotationX += dt * 0.25;
+        this.updateTileInstance(tile);
       }
+    if (this.tileMesh) this.tileMesh.instanceMatrix.needsUpdate = true;
     for (const obstacle of this.obstacleRuntimes)
       if (obstacle.falling) {
         obstacle.velocity -= 16 * dt;
@@ -373,5 +393,19 @@ export class ArenaWorld {
     const ray = new RAPIER.Ray(from, direction);
     const hit = this.physics.castRay(ray, length, true);
     return hit ? hit.timeOfImpact : null;
+  }
+  dispose(): void {
+    this.group.removeFromParent();
+    for (const tile of this.tiles.values()) this.physics.removeRigidBody(tile.body);
+    for (const obstacle of this.obstacleRuntimes) this.physics.removeRigidBody(obstacle.body);
+    for (const meteor of this.meteorVisuals.values()) meteor.removeFromParent();
+    this.meteorVisuals.clear();
+  }
+  private updateTileInstance(tile: TileRuntime): void {
+    if (!this.tileMesh) return;
+    this.tileTransform.position.set(tile.x, tile.y, tile.z);
+    this.tileTransform.rotation.set(tile.rotationX, 0, 0);
+    this.tileTransform.updateMatrix();
+    this.tileMesh.setMatrixAt(tile.instance, this.tileTransform.matrix);
   }
 }

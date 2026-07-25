@@ -4,28 +4,36 @@ import {
   ARENA_COLUMNS,
   ARENA_ROWS,
   BASE_KNOCKBACK,
+  CLIENT_FIXED_STEP,
+  CLIENT_SIMULATION_HZ,
   COLLAPSE_FIRST_SECONDS,
   COLLAPSE_INTERVAL_SECONDS,
   COLLAPSE_WARNING_SECONDS,
   DODGE_COOLDOWN_SECONDS,
+  DODGE_INVULNERABLE_SECONDS,
   DODGE_SECONDS,
   DODGE_SPEED,
   ELIMINATION_Y,
-  FIXED_STEP,
+  HIT_CONTROL_LOCK_SECONDS,
   JUMP_SPEED,
   METEOR_STUN_SECONDS,
-  MOVE_SPEED,
+  MAX_FRAME_ACCUMULATOR_SECONDS,
+  MAX_PHYSICS_SUBSTEPS,
   PUNCH_ACTIVE_SECONDS,
   PUNCH_COOLDOWN_SECONDS,
+  PUNCH_RECOVERY_SECONDS,
+  PUNCH_VERTICAL_KNOCKBACK,
   PUNCH_WINDUP_SECONDS,
   ROUND_COUNTDOWN_SECONDS,
   ROUNDS_TO_WIN,
-  SIMULATION_HZ,
   TILE_SIZE,
+  VISUAL_ROTATION_SPEED,
   activeTiles,
   collapseOrder,
   generateBouncers,
   inPunchVolume,
+  rotateAngleToward,
+  stepHorizontalVelocity,
   safeBouncerLanding,
   tileToWorld,
   type CharacterChoice,
@@ -47,6 +55,7 @@ interface Fighter {
   score: number;
   dodgeReady: number;
   dodgeUntil: number;
+  dodgeInvulnerableUntil: number;
   punchReady: number;
   punchStart: number;
   hit: boolean;
@@ -56,8 +65,12 @@ interface Fighter {
   bouncerEnd: THREE.Vector3;
   lastGroundedTick: number;
   jumpBufferedUntil: number;
+  facingYaw: number;
+  grounded: boolean;
+  controlLockedUntil: number;
+  footstepReadyTick: number;
 }
-const secondsToTicks = (seconds: number) => Math.round(seconds * SIMULATION_HZ);
+const secondsToTicks = (seconds: number) => Math.round(seconds * CLIENT_SIMULATION_HZ);
 
 export class LocalMatch {
   tick = 0;
@@ -76,6 +89,7 @@ export class LocalMatch {
   private random = new SeededRandom(0x4b4e4f43);
   private botController: BotController;
   private readonly bouncers = generateBouncers(0x4b4e4f43);
+  private lastCountdownSecond = 4;
   constructor(
     private readonly physics: RAPIER.World,
     private readonly scene: THREE.Scene,
@@ -94,7 +108,7 @@ export class LocalMatch {
       RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(x, 2, 0)
         .lockRotations()
-        .setLinearDamping(1.7)
+        .setLinearDamping(0)
         .setCcdEnabled(true),
     );
     this.physics.createCollider(
@@ -111,6 +125,7 @@ export class LocalMatch {
       score: 0,
       dodgeReady: 0,
       dodgeUntil: 0,
+      dodgeInvulnerableUntil: 0,
       punchReady: 0,
       punchStart: -999,
       hit: false,
@@ -120,29 +135,46 @@ export class LocalMatch {
       bouncerEnd: new THREE.Vector3(),
       lastGroundedTick: 0,
       jumpBufferedUntil: 0,
+      facingYaw: x < 0 ? Math.PI / 2 : -Math.PI / 2,
+      grounded: true,
+      controlLockedUntil: 0,
+      footstepReadyTick: 0,
     };
   }
   setHumanInput(input: InputFrame, cameraForward: THREE.Vector3, cameraRight: THREE.Vector3): void {
     this.human.input = {
-      ...input,
+      jump: input.jump || this.human.input.jump,
+      dodge: input.dodge || this.human.input.dodge,
+      punch: input.punch || this.human.input.punch,
       moveX: cameraRight.x * input.moveX + cameraForward.x * input.moveZ,
       moveZ: cameraRight.z * input.moveX + cameraForward.z * input.moveZ,
     };
   }
   update(delta: number): void {
-    this.accumulator = Math.min(this.accumulator + delta, 0.2);
-    while (this.accumulator >= FIXED_STEP) {
+    this.accumulator = Math.min(this.accumulator + delta, MAX_FRAME_ACCUMULATOR_SECONDS);
+    let substeps = 0;
+    while (this.accumulator >= CLIENT_FIXED_STEP && substeps < MAX_PHYSICS_SUBSTEPS) {
       this.fixedStep();
-      this.accumulator -= FIXED_STEP;
+      this.accumulator -= CLIENT_FIXED_STEP;
+      substeps += 1;
     }
+    if (substeps === MAX_PHYSICS_SUBSTEPS) this.accumulator = 0;
     for (const fighter of [this.human, this.bot]) this.syncVisual(fighter, delta);
   }
   private fixedStep(): void {
     this.tick += 1;
     this.countdown =
       this.phase === 'countdown'
-        ? Math.max(0, ROUND_COUNTDOWN_SECONDS - (this.tick - this.phaseTick) / SIMULATION_HZ)
+        ? Math.max(0, ROUND_COUNTDOWN_SECONDS - (this.tick - this.phaseTick) / CLIENT_SIMULATION_HZ)
         : 0;
+    const countdownSecond = Math.ceil(this.countdown);
+    if (
+      this.phase === 'countdown' &&
+      countdownSecond > 0 &&
+      countdownSecond < this.lastCountdownSecond
+    )
+      void this.audio.play('countdown');
+    this.lastCountdownSecond = countdownSecond;
     if (
       this.phase === 'countdown' &&
       this.tick - this.phaseTick >= secondsToTicks(ROUND_COUNTDOWN_SECONDS)
@@ -151,15 +183,17 @@ export class LocalMatch {
       this.nextCollapse = this.tick + secondsToTicks(COLLAPSE_FIRST_SECONDS);
       this.nextMeteor = this.tick + secondsToTicks(6);
       this.onEvent('go');
+      void this.audio.play('go');
     }
     if (this.phase !== 'playing') {
       this.physics.step();
+      this.consumeOneShots(this.human);
       return;
     }
     const activeWidth = ((ARENA_COLUMNS - this.collapsedRings * 2) * TILE_SIZE) / 2;
     const activeDepth = ((ARENA_ROWS - this.collapsedRings * 2) * TILE_SIZE) / 2;
     this.bot.input = this.botController.update(
-      FIXED_STEP,
+      CLIENT_FIXED_STEP,
       this.bot.body,
       this.human.body,
       this.meteors.map(({ x, z }) => ({ x, z })),
@@ -175,9 +209,17 @@ export class LocalMatch {
     this.checkBouncers(this.human);
     this.checkBouncers(this.bot);
     this.checkRingOuts();
+    this.consumeOneShots(this.human);
+    this.consumeOneShots(this.bot);
+  }
+  private consumeOneShots(fighter: Fighter): void {
+    fighter.input.jump = false;
+    fighter.input.dodge = false;
+    fighter.input.punch = false;
   }
   private stepFighter(fighter: Fighter): void {
     const stunned = this.tick < fighter.stunUntil;
+    const controlLocked = this.tick < fighter.controlLockedUntil;
     const launched = this.tick < fighter.bouncerUntil;
     if (launched) {
       const duration = secondsToTicks(1.15);
@@ -192,29 +234,42 @@ export class LocalMatch {
       fighter.body.setLinvel({ x: 0, y: fighter.body.linvel().y, z: 0 }, true);
       return;
     }
+    if (controlLocked) {
+      fighter.grounded = this.isGrounded(fighter);
+      return;
+    }
     const velocity = fighter.body.linvel();
     const length = Math.hypot(fighter.input.moveX, fighter.input.moveZ);
     const dx = length > 1 ? fighter.input.moveX / length : fighter.input.moveX;
     const dz = length > 1 ? fighter.input.moveZ / length : fighter.input.moveZ;
     if (fighter.input.dodge && this.tick >= fighter.dodgeReady) {
-      const useX = length > 0.1 ? dx : Math.sin(fighter.avatar.rotation.y);
-      const useZ = length > 0.1 ? dz : Math.cos(fighter.avatar.rotation.y);
+      const useX = length > 0.1 ? dx : Math.sin(fighter.facingYaw);
+      const useZ = length > 0.1 ? dz : Math.cos(fighter.facingYaw);
       fighter.body.setLinvel({ x: useX * DODGE_SPEED, y: velocity.y, z: useZ * DODGE_SPEED }, true);
       fighter.dodgeUntil = this.tick + secondsToTicks(DODGE_SECONDS);
+      fighter.dodgeInvulnerableUntil = this.tick + secondsToTicks(DODGE_INVULNERABLE_SECONDS);
       fighter.dodgeReady = this.tick + secondsToTicks(DODGE_COOLDOWN_SECONDS);
-      this.audio.play('dodge');
+      void this.audio.play('dodge', fighter.body.translation(), this.human.body.translation());
+      this.onEvent('dodge', { position: fighter.body.translation(), yaw: fighter.facingYaw });
     } else if (this.tick >= fighter.dodgeUntil) {
-      const blend = 0.18;
+      const horizontal = stepHorizontalVelocity(
+        velocity,
+        dx,
+        dz,
+        fighter.grounded,
+        CLIENT_FIXED_STEP,
+      );
       fighter.body.setLinvel(
         {
-          x: velocity.x + (dx * MOVE_SPEED - velocity.x) * blend,
+          x: horizontal.x,
           y: velocity.y,
-          z: velocity.z + (dz * MOVE_SPEED - velocity.z) * blend,
+          z: horizontal.z,
         },
         true,
       );
     }
     const grounded = this.isGrounded(fighter);
+    fighter.grounded = grounded;
     if (grounded) fighter.lastGroundedTick = this.tick;
     if (fighter.input.jump) fighter.jumpBufferedUntil = this.tick + secondsToTicks(0.12);
     const canCoyoteJump = this.tick - fighter.lastGroundedTick <= secondsToTicks(0.1);
@@ -222,15 +277,16 @@ export class LocalMatch {
       fighter.body.setLinvel({ ...fighter.body.linvel(), y: JUMP_SPEED }, true);
       fighter.jumpBufferedUntil = 0;
       fighter.lastGroundedTick = -999;
-      this.audio.play('jump');
+      void this.audio.play('jump', fighter.body.translation(), this.human.body.translation());
     }
     if (fighter.input.punch && this.tick >= fighter.punchReady && this.tick >= fighter.dodgeUntil) {
       fighter.punchStart = this.tick;
       fighter.punchReady = this.tick + secondsToTicks(PUNCH_COOLDOWN_SECONDS);
       fighter.hit = false;
-      this.audio.play('punch');
+      void this.audio.play('punch', fighter.body.translation(), this.human.body.translation());
+      this.onEvent('punch', { position: fighter.body.translation(), yaw: fighter.facingYaw });
     }
-    if (length > 0.1) fighter.avatar.rotation.y = Math.atan2(dx, dz);
+    if (length > 0.1) fighter.facingYaw = Math.atan2(dx, dz);
   }
   private isGrounded(fighter: Fighter): boolean {
     const position = fighter.body.translation();
@@ -247,13 +303,13 @@ export class LocalMatch {
     const active =
       age >= secondsToTicks(PUNCH_WINDUP_SECONDS) &&
       age < secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
-    if (!active || attacker.hit || this.tick < target.dodgeUntil) return;
+    if (!active || attacker.hit || this.tick < target.dodgeInvulnerableUntil) return;
     const source = attacker.body.translation();
     const destination = target.body.translation();
     const forward = {
-      x: Math.sin(attacker.avatar.rotation.y),
+      x: Math.sin(attacker.facingYaw),
       y: 0,
-      z: Math.cos(attacker.avatar.rotation.y),
+      z: Math.cos(attacker.facingYaw),
     };
     if (!inPunchVolume(source, forward, destination)) return;
     const direction = new THREE.Vector3(
@@ -275,12 +331,17 @@ export class LocalMatch {
     );
     if (hit && hit.collider.parent() !== target.body) return;
     target.body.setLinvel(
-      { x: forward.x * BASE_KNOCKBACK, y: 5.2, z: forward.z * BASE_KNOCKBACK },
+      {
+        x: forward.x * BASE_KNOCKBACK,
+        y: PUNCH_VERTICAL_KNOCKBACK,
+        z: forward.z * BASE_KNOCKBACK,
+      },
       true,
     );
+    target.controlLockedUntil = this.tick + secondsToTicks(HIT_CONTROL_LOCK_SECONDS);
     attacker.hit = true;
-    this.audio.play('hit');
-    this.onEvent('hit', destination);
+    void this.audio.play('hit', destination, this.human.body.translation());
+    this.onEvent('hit', { position: destination });
   }
   private updateHazards(): void {
     const warningAt = this.nextCollapse - secondsToTicks(COLLAPSE_WARNING_SECONDS);
@@ -292,6 +353,7 @@ export class LocalMatch {
         this.tick +
         secondsToTicks(COLLAPSE_INTERVAL_SECONDS * (this.collapsedRings >= 2 ? 0.82 : 1));
       this.onEvent('collapse');
+      void this.audio.play('collapse');
     }
     this.world.setCollapse(this.collapsedRings, this.warningRing);
     if (this.tick >= this.nextMeteor) {
@@ -313,7 +375,7 @@ export class LocalMatch {
     }
     for (const meteor of this.meteors)
       if (meteor.impactTick === this.tick) {
-        this.audio.play('meteor');
+        void this.audio.play('meteor', meteor, this.human.body.translation());
         for (const fighter of [this.human, this.bot]) {
           const position = fighter.body.translation();
           if (Math.hypot(position.x - meteor.x, position.z - meteor.z) < 4.5) {
@@ -338,6 +400,7 @@ export class LocalMatch {
       fighter.bouncerStart.set(position.x, position.y, position.z);
       fighter.bouncerEnd.set(destination.x, 2, destination.z);
       fighter.bouncerUntil = this.tick + secondsToTicks(1.15);
+      void this.audio.play('launch');
       this.onEvent('launch');
       break;
     }
@@ -355,6 +418,7 @@ export class LocalMatch {
   }
   private resetRound(): void {
     this.phase = 'countdown';
+    this.lastCountdownSecond = 4;
     this.phaseTick = this.tick;
     this.collapsedRings = 0;
     this.warningRing = null;
@@ -365,6 +429,14 @@ export class LocalMatch {
     this.bot.body.setTranslation({ x: 14, y: 2, z: 0 }, true);
     for (const fighter of [this.human, this.bot])
       fighter.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    for (const fighter of [this.human, this.bot]) {
+      fighter.dodgeUntil = 0;
+      fighter.dodgeInvulnerableUntil = 0;
+      fighter.punchStart = -999;
+      fighter.controlLockedUntil = 0;
+      fighter.stunUntil = 0;
+      fighter.grounded = true;
+    }
   }
   rematch(): void {
     this.human.score = 0;
@@ -384,14 +456,23 @@ export class LocalMatch {
           : this.tick < fighter.dodgeUntil
             ? 'dodge'
             : this.tick - fighter.punchStart <
-                secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS)
+                secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
               ? 'punch'
-              : !this.isGrounded(fighter)
+              : !fighter.grounded
                 ? 'jump'
                 : speed > 0.8
                   ? 'run'
                   : 'idle';
     fighter.avatar.setAction(action);
+    if (action === 'run' && fighter.grounded && this.tick >= fighter.footstepReadyTick) {
+      fighter.footstepReadyTick = this.tick + secondsToTicks(0.34);
+      void this.audio.play('footstep', fighter.body.translation(), this.human.body.translation());
+    }
+    fighter.avatar.rotation.y = rotateAngleToward(
+      fighter.avatar.rotation.y,
+      fighter.facingYaw,
+      VISUAL_ROTATION_SPEED * dt,
+    );
     fighter.avatar.animate(dt, speed);
   }
   dispose(): void {
@@ -401,6 +482,28 @@ export class LocalMatch {
     }
   }
   get collapseSeconds(): number {
-    return Math.max(0, (this.nextCollapse - this.tick) / SIMULATION_HZ);
+    return Math.max(0, (this.nextCollapse - this.tick) / CLIENT_SIMULATION_HZ);
+  }
+  get debugState(): { speed: number; grounded: boolean; action: string } {
+    const velocity = this.human.body.linvel();
+    return {
+      speed: Math.hypot(velocity.x, velocity.z),
+      grounded: this.human.grounded,
+      action:
+        this.tick < this.human.stunUntil || this.tick < this.human.controlLockedUntil
+          ? 'stunned'
+          : this.tick < this.human.dodgeUntil
+            ? 'dodge'
+            : this.tick - this.human.punchStart <
+                secondsToTicks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
+              ? 'punch'
+              : Math.hypot(velocity.x, velocity.z) > 0.8
+                ? 'run'
+                : 'idle',
+    };
+  }
+  testRingOutHuman(): void {
+    const position = this.human.body.translation();
+    this.human.body.setTranslation({ x: position.x, y: ELIMINATION_Y - 2, z: position.z }, true);
   }
 }

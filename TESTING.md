@@ -12,6 +12,7 @@ npm run typecheck
 npm run test
 npm run build
 npm run test:e2e
+node scripts/playtest-game.mjs
 ```
 
 Unit tests cover seeded random generation, room codes, input schemas, ring calculations, active tiles, collapse order, safe bouncer landings, the exact meteor stun constant, punch cone/range, wall blocking, ring-outs, simultaneous draws, reconnection expiry, matchmaking, and room cleanup. Socket integration tests create/join/ready a room, submit authoritative input, receive snapshots, reject invalid input, and pair Quick Play clients. Playwright covers menu load, Bot Mode startup, movement, floor stability, punch, pause, persistent settings, offline online-menu behavior, and room-code validation.
@@ -29,6 +30,7 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 - [ ] Cap at 30 FPS and verify responsive movement, landing, wall collision, and no seam falls.
 - [ ] Test at 60 FPS.
 - [ ] Test at 120 or 144 FPS; speed and jump height must match lower rates.
+- [ ] Append `?debug=1`; verify physics stays within budget and draw/body counts do not grow between rematches.
 - [ ] Verify the character always spawns above the map.
 - [ ] Push into every test wall from all directions; no corner penetration.
 - [ ] Jump onto low and medium obstacles and land without snagging.
@@ -36,7 +38,7 @@ Unit tests cover seeded random generation, room codes, input schemas, ring calcu
 - [ ] Verify A is camera-relative left and D is camera-relative right.
 - [ ] Rotate the camera 360°, zoom both ways, and test collision against the tower and walls.
 - [ ] Verify the camera never turns toward the opponent without mouse input and no lock-on exists.
-- [ ] Verify punch reach is about three tiles, forward-only, and blocked by walls.
+- [ ] Verify punch reach is about 2.5 tiles, forward-only, and blocked by walls.
 - [ ] Verify there is no health, damage, stamina, heavy attack, block, grab, or special UI.
 
 ### Hazards and round flow

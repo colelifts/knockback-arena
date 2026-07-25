@@ -1,4 +1,11 @@
-import { ELIMINATION_Y, PUNCH_HALF_ANGLE, PUNCH_REACH } from './constants.js';
+import {
+  ELIMINATION_Y,
+  PUNCH_HALF_ANGLE,
+  PUNCH_RADIUS,
+  PUNCH_REACH,
+  PUNCH_START_OFFSET,
+  PUNCH_VERTICAL_TOLERANCE,
+} from './constants.js';
 
 export interface Vec3 {
   x: number;
@@ -14,11 +21,21 @@ const horizontalLength = (vector: Vec3): number => Math.hypot(vector.x, vector.z
 export const inPunchVolume = (attacker: Vec3, forward: Vec3, target: Vec3): boolean => {
   const offset = { x: target.x - attacker.x, y: target.y - attacker.y, z: target.z - attacker.z };
   const distance = horizontalLength(offset);
-  if (distance > PUNCH_REACH || Math.abs(offset.y) > 3.5 || distance < 0.001) return false;
+  if (distance > PUNCH_REACH || Math.abs(offset.y) > PUNCH_VERTICAL_TOLERANCE || distance < 0.001)
+    return false;
   const forwardLength = horizontalLength(forward);
   if (forwardLength < 0.001) return false;
-  const cosine = (offset.x * forward.x + offset.z * forward.z) / (distance * forwardLength);
-  return cosine >= Math.cos(PUNCH_HALF_ANGLE);
+  const nx = forward.x / forwardLength;
+  const nz = forward.z / forwardLength;
+  const axial = offset.x * nx + offset.z * nz;
+  const lateral = Math.abs(offset.x * nz - offset.z * nx);
+  const cosine = axial / distance;
+  return (
+    axial >= PUNCH_START_OFFSET - PUNCH_RADIUS &&
+    axial <= PUNCH_REACH &&
+    lateral <= PUNCH_RADIUS &&
+    cosine >= Math.cos(PUNCH_HALF_ANGLE)
+  );
 };
 
 const segmentIntersectsAabb = (start: Vec3, end: Vec3, wall: Wall): boolean => {

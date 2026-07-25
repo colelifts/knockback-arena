@@ -1,21 +1,23 @@
 import {
-  AIR_ACCELERATION,
   BASE_KNOCKBACK,
   BOUNCER_COOLDOWN_SECONDS,
   COLLAPSE_FIRST_SECONDS,
   COLLAPSE_INTERVAL_SECONDS,
   COLLAPSE_WARNING_SECONDS,
   DODGE_COOLDOWN_SECONDS,
+  DODGE_INVULNERABLE_SECONDS,
   DODGE_SECONDS,
   DODGE_SPEED,
+  ELIMINATION_Y,
   FIXED_STEP,
   GRAVITY,
-  GROUND_ACCELERATION,
+  HIT_CONTROL_LOCK_SECONDS,
   JUMP_SPEED,
   METEOR_STUN_SECONDS,
-  MOVE_SPEED,
   PUNCH_ACTIVE_SECONDS,
   PUNCH_COOLDOWN_SECONDS,
+  PUNCH_RECOVERY_SECONDS,
+  PUNCH_VERTICAL_KNOCKBACK,
   PUNCH_WINDUP_SECONDS,
   ROUND_COUNTDOWN_SECONDS,
   ROUND_TIME_LIMIT_SECONDS,
@@ -29,6 +31,7 @@ import {
   resolveRingOuts,
   ringForTile,
   safeBouncerLanding,
+  stepHorizontalVelocity,
   tileToWorld,
   worldToTile,
   type CharacterChoice,
@@ -44,6 +47,7 @@ interface RuntimePlayer extends PlayerSnapshot {
   input: PlayerInput;
   dodgeReadyTick: number;
   dodgeUntilTick: number;
+  dodgeInvulnerableUntilTick: number;
   punchReadyTick: number;
   punchStartedTick: number;
   hitThisPunch: boolean;
@@ -54,6 +58,7 @@ interface RuntimePlayer extends PlayerSnapshot {
   bouncerCooldownTick: number;
   bouncerStart: { x: number; y: number; z: number };
   bouncerEnd: { x: number; y: number; z: number };
+  controlLockedUntilTick: number;
 }
 
 const emptyInput = (): PlayerInput => ({
@@ -68,6 +73,39 @@ const emptyInput = (): PlayerInput => ({
   punch: false,
 });
 const ticks = (seconds: number): number => Math.round(seconds * SIMULATION_HZ);
+const sweptPointHitsExpandedWall = (
+  start: { x: number; y: number; z: number },
+  end: { x: number; y: number; z: number },
+  wall: (typeof arenaWalls)[number],
+): boolean => {
+  const startsInside = (['x', 'y', 'z'] as const).every((axis) => {
+    const padding = axis === 'y' ? 1.8 : 0.72;
+    return (
+      start[axis] >= wall.center[axis] - wall.half[axis] - padding &&
+      start[axis] <= wall.center[axis] + wall.half[axis] + padding
+    );
+  });
+  if (startsInside) return false;
+  let minimum = 0;
+  let maximum = 1;
+  for (const axis of ['x', 'y', 'z'] as const) {
+    const padding = axis === 'y' ? 1.8 : 0.72;
+    const low = wall.center[axis] - wall.half[axis] - padding;
+    const high = wall.center[axis] + wall.half[axis] + padding;
+    const delta = end[axis] - start[axis];
+    if (Math.abs(delta) < 1e-8) {
+      if (start[axis] < low || start[axis] > high) return false;
+      continue;
+    }
+    let first = (low - start[axis]) / delta;
+    let second = (high - start[axis]) / delta;
+    if (first > second) [first, second] = [second, first];
+    minimum = Math.max(minimum, first);
+    maximum = Math.min(maximum, second);
+    if (minimum > maximum) return false;
+  }
+  return true;
+};
 
 export class MatchSimulation {
   readonly seed: number;
@@ -112,6 +150,7 @@ export class MatchSimulation {
       input: emptyInput(),
       dodgeReadyTick: 0,
       dodgeUntilTick: 0,
+      dodgeInvulnerableUntilTick: 0,
       punchReadyTick: 0,
       punchStartedTick: -999,
       hitThisPunch: false,
@@ -122,6 +161,7 @@ export class MatchSimulation {
       bouncerCooldownTick: 0,
       bouncerStart: { ...spawn },
       bouncerEnd: { ...spawn },
+      controlLockedUntilTick: 0,
     });
   }
 
@@ -179,9 +219,12 @@ export class MatchSimulation {
       return;
     }
     const stunned = this.tick < player.stunnedUntilTick;
+    const controlLocked = this.tick < player.controlLockedUntilTick;
     if (stunned) {
       player.velocity.x = 0;
       player.velocity.z = 0;
+      player.action = 'stunned';
+    } else if (controlLocked) {
       player.action = 'stunned';
     } else {
       const inputLength = Math.hypot(player.input.moveX, player.input.moveZ);
@@ -195,14 +238,20 @@ export class MatchSimulation {
         player.velocity.x = dx * DODGE_SPEED;
         player.velocity.z = dz * DODGE_SPEED;
         player.dodgeUntilTick = this.tick + ticks(DODGE_SECONDS);
+        player.dodgeInvulnerableUntilTick = this.tick + ticks(DODGE_INVULNERABLE_SECONDS);
         player.dodgeReadyTick = this.tick + ticks(DODGE_COOLDOWN_SECONDS);
       }
       const dodging = this.tick < player.dodgeUntilTick;
       if (!dodging) {
-        const acceleration = player.grounded ? GROUND_ACCELERATION : AIR_ACCELERATION;
-        const blend = Math.min(1, acceleration * FIXED_STEP);
-        player.velocity.x += (inputX * MOVE_SPEED - player.velocity.x) * blend;
-        player.velocity.z += (inputZ * MOVE_SPEED - player.velocity.z) * blend;
+        const horizontal = stepHorizontalVelocity(
+          player.velocity,
+          inputX,
+          inputZ,
+          player.grounded,
+          FIXED_STEP,
+        );
+        player.velocity.x = horizontal.x;
+        player.velocity.z = horizontal.z;
       }
       if (inputLength > 0.1) player.facing = { x: inputX, z: inputZ };
       if (player.grounded) player.lastGroundedTick = this.tick;
@@ -223,7 +272,8 @@ export class MatchSimulation {
       }
       player.action = dodging
         ? 'dodge'
-        : this.tick - player.punchStartedTick < ticks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS)
+        : this.tick - player.punchStartedTick <
+            ticks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS + PUNCH_RECOVERY_SECONDS)
           ? 'punch'
           : !player.grounded
             ? 'jump'
@@ -277,7 +327,10 @@ export class MatchSimulation {
       const insideY =
         player.position.y < wall.center.y + wall.half.y + 1.8 &&
         player.position.y > wall.center.y - wall.half.y;
-      if (insideX && insideZ && insideY) {
+      if (
+        (insideX && insideZ && insideY) ||
+        sweptPointHitsExpandedWall(previous, player.position, wall)
+      ) {
         player.position.x = previous.x;
         player.position.z = previous.z;
         player.velocity.x = 0;
@@ -297,7 +350,8 @@ export class MatchSimulation {
       const active =
         age >= ticks(PUNCH_WINDUP_SECONDS) &&
         age < ticks(PUNCH_WINDUP_SECONDS + PUNCH_ACTIVE_SECONDS);
-      if (!active || attacker.hitThisPunch || this.tick < target.dodgeUntilTick) continue;
+      if (!active || attacker.hitThisPunch || this.tick < target.dodgeInvulnerableUntilTick)
+        continue;
       const forward = { x: attacker.facing.x, y: 0, z: attacker.facing.z };
       if (punchIsLegal(attacker.position, forward, target.position, arenaWalls)) {
         const forwardSpeed = Math.max(
@@ -308,8 +362,9 @@ export class MatchSimulation {
           BASE_KNOCKBACK * (1 + Math.min(0.18, forwardSpeed / 60)) * (target.grounded ? 1 : 1.12);
         target.velocity.x = forward.x * force;
         target.velocity.z = forward.z * force;
-        target.velocity.y = 5.2;
+        target.velocity.y = PUNCH_VERTICAL_KNOCKBACK;
         target.grounded = false;
+        target.controlLockedUntilTick = this.tick + ticks(HIT_CONTROL_LOCK_SECONDS);
         attacker.hitThisPunch = true;
       }
     }
@@ -382,6 +437,11 @@ export class MatchSimulation {
       player.velocity = { x: 0, y: 0, z: 0 };
       player.grounded = true;
       player.stunnedUntilTick = 0;
+      player.controlLockedUntilTick = 0;
+      player.dodgeUntilTick = 0;
+      player.dodgeInvulnerableUntilTick = 0;
+      player.punchStartedTick = -999;
+      player.action = 'idle';
     });
     this.collapsedRings = 0;
     this.warningRing = null;
@@ -395,6 +455,19 @@ export class MatchSimulation {
     this.phase = 'countdown';
     this.phaseStartedTick = this.tick;
     this.resetRound([...this.players.values()]);
+  }
+
+  testRingOut(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (player) player.position.y = ELIMINATION_Y - 2;
+  }
+
+  testSetPlayerPosition(playerId: string, position: { x: number; y: number; z: number }): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    player.position = { ...position };
+    player.velocity = { x: 0, y: 0, z: 0 };
+    player.grounded = true;
   }
 
   snapshot(): MatchSnapshot {
@@ -418,16 +491,18 @@ export class MatchSimulation {
           input: _input,
           dodgeReadyTick: _a,
           dodgeUntilTick: _b,
-          punchReadyTick: _c,
-          punchStartedTick: _d,
-          hitThisPunch: _e,
-          lastGroundedTick: _f,
-          jumpBufferedUntil: _g,
-          bouncerStartedTick: _h,
-          bouncerUntilTick: _i,
-          bouncerCooldownTick: _j,
-          bouncerStart: _k,
-          bouncerEnd: _l,
+          dodgeInvulnerableUntilTick: _c,
+          punchReadyTick: _d,
+          punchStartedTick: _e,
+          hitThisPunch: _f,
+          lastGroundedTick: _g,
+          jumpBufferedUntil: _h,
+          bouncerStartedTick: _i,
+          bouncerUntilTick: _j,
+          bouncerCooldownTick: _k,
+          bouncerStart: _l,
+          bouncerEnd: _m,
+          controlLockedUntilTick: _n,
           ...player
         }) => player,
       ),

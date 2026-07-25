@@ -11,6 +11,7 @@ const mesh = (geometry: THREE.BufferGeometry, surface: THREE.Material, cast = tr
 };
 
 export class CharacterAvatar extends THREE.Group {
+  private readonly modelRoot = new THREE.Group();
   private readonly leftArm = new THREE.Group();
   private readonly rightArm = new THREE.Group();
   private readonly leftLeg = new THREE.Group();
@@ -26,6 +27,10 @@ export class CharacterAvatar extends THREE.Group {
   ) {
     super();
     this.name = `fighter-${choice}`;
+    // The authored face and toes point toward local -Z; simulation forward is +Z.
+    // Keep that correction in one place so physics, combat, camera, and networking share one yaw.
+    this.modelRoot.rotation.y = Math.PI;
+    this.add(this.modelRoot);
     const primary = material(choice === 'boy' ? 0x20a7ff : 0xff4f9a, 0.5, 0.12);
     const secondary = material(choice === 'boy' ? 0x172b71 : 0x7b204d, 0.72);
     const skin = material(choice === 'boy' ? 0xd99670 : 0xe6aa87, 0.85);
@@ -33,7 +38,7 @@ export class CharacterAvatar extends THREE.Group {
     const white = material(0xf2f5ff, 0.55);
     const sole = material(0x151a2a, 0.75);
     this.torso.position.y = 2.7;
-    this.add(this.torso);
+    this.modelRoot.add(this.torso);
     const chest = mesh(new THREE.CapsuleGeometry(0.7, 1.05, 5, 10), primary);
     chest.scale.set(choice === 'girl' ? 0.92 : 1.06, 1, choice === 'girl' ? 0.88 : 1);
     this.torso.add(chest);
@@ -92,7 +97,7 @@ export class CharacterAvatar extends THREE.Group {
     }
     const makeLimb = (group: THREE.Group, x: number, arm: boolean) => {
       group.position.set(x, arm ? 3.12 : 1.45, 0);
-      this.add(group);
+      this.modelRoot.add(group);
       const limb = mesh(
         arm ? new THREE.CapsuleGeometry(0.2, 0.85, 4, 8) : new THREE.CapsuleGeometry(0.27, 1, 4, 8),
         arm ? primary : secondary,
@@ -122,14 +127,14 @@ export class CharacterAvatar extends THREE.Group {
     );
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.08;
-    this.add(ring);
+    this.modelRoot.add(ring);
     for (let index = 0; index < 6; index += 1) {
       const star = mesh(new THREE.OctahedronGeometry(0.15), material(0xffe85c, 0.28, 0.25));
       star.visible = false;
       this.stars.add(star);
     }
     this.stars.position.y = 5.15;
-    this.add(this.stars);
+    this.modelRoot.add(this.stars);
   }
   setAction(action: string): void {
     if (action !== this.action) {
@@ -154,7 +159,14 @@ export class CharacterAvatar extends THREE.Group {
     if (this.action === 'dodge') {
       this.scale.set(1.2, 0.72, 1.35);
       this.rotation.z = cycle * 0.05;
-    } else this.scale.lerp(new THREE.Vector3(1, 1, 1), Math.min(1, dt * 14));
+    } else {
+      const blend = Math.min(1, dt * 14);
+      this.scale.set(
+        THREE.MathUtils.lerp(this.scale.x, 1, blend),
+        THREE.MathUtils.lerp(this.scale.y, 1, blend),
+        THREE.MathUtils.lerp(this.scale.z, 1, blend),
+      );
+    }
     if (this.action === 'jump' || this.action === 'launched') {
       this.leftLeg.rotation.x = -0.35;
       this.rightLeg.rotation.x = 0.45;
