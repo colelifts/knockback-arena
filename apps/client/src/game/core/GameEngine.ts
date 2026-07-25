@@ -280,12 +280,20 @@ export class GameEngine {
   }
   getTestState() {
     const fighter = this.localMatch?.human;
-    const position = fighter?.body.translation();
+    const onlinePlayer = this.onlineSnapshot?.players.find((player) => player.id === this.localId);
+    const position = fighter?.body.translation() ?? onlinePlayer?.position;
     return {
       running: this.running,
       phase: this.localMatch?.phase ?? this.onlineSnapshot?.phase ?? 'menu',
       position: position ? { ...position } : null,
       score: fighter?.score ?? 0,
+      tick: this.onlineSnapshot?.tick ?? this.localMatch?.tick ?? 0,
+      localId: this.localId,
+      players:
+        this.onlineSnapshot?.players.map((player) => ({
+          id: player.id,
+          position: { ...player.position },
+        })) ?? [],
     };
   }
   testKey(code: string, down: boolean): void {
