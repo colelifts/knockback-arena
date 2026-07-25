@@ -1,11 +1,13 @@
 {
-  "checkedAt": "2026-07-25T06:29:08.582Z",
+  "checkedAt": "2026-07-25T12:41:02.429Z",
   "productionUrl": "https://knockback-arena.vercel.app",
-  "roomCode": "MWUN5",
+  "roomCode": "HTYKQ",
   "twoBrowsersStarted": true,
-  "authoritativeMovementMeters": 8.31,
+  "authoritativeMovementMeters": 6.53,
   "remoteSnapshotReceived": true,
   "reconnectResumedAtTick": 142,
-  "expectedOfflineErrors": ["B: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"],
+  "expectedOfflineErrors": [
+    "B: Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+  ],
   "unexpectedConsoleErrors": []
 }
