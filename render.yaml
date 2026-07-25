@@ -13,7 +13,7 @@ services:
       - key: GAME_TICK_RATE
         value: 30
       - key: SNAPSHOT_RATE
-        value: 20
+        value: 30
       - key: ROOM_RECONNECT_SECONDS
         value: 15
       - key: ROOM_IDLE_MINUTES
